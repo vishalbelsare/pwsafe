@@ -15,6 +15,7 @@
 
 #include <vector>
 #include <exception>
+#include <functional>
 
 #include "../../core/Util.h"
 #include "../../core/PWScore.h"
@@ -114,7 +115,7 @@ struct SearchWithConfirmation
                             "[q]uit  - no for this item all remaining items\n"
                             "a[b]ort - abort operation, even for previous items\n";
 
-    wchar_t choice{ ua.confirmed? L'a': 0 };
+    wchar_t choice{ ua.confirmed? L'a': L'\0' };
 
     SearchForEntries(core, ua.opArg, ua.ignoreCase, ua.subset, ua.fields,
         [matchfn, &choice, help](const pws_os::CUUID &uuid,
@@ -156,7 +157,7 @@ struct SearchWithoutConfirmation
     SearchForEntries(core, ua.opArg, ua.ignoreCase, ua.subset, ua.fields,
                      [&matches](const pws_os::CUUID &/*uuid*/,
                                  const CItemData &data,
-                                 bool */*keep_going*/) {
+                                 bool * /*keep_going*/) {
       matches.push_back(&data);
     });
     return afn(matches);

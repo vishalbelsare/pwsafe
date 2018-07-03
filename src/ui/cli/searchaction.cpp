@@ -19,7 +19,7 @@
 
 using namespace std;
 
-constexpr auto known_fields = {
+const auto known_fields = { // should be constexpr, but VS14 is broken
   CItemData::GROUP,
   CItemData::TITLE,
   CItemData::USER,
@@ -44,7 +44,7 @@ constexpr auto known_fields = {
   CItemData::KBSHORTCUT
 };
 
-int PrintSearchResults(const ItemPtrVec &items, PWScore &core, const CItemData::FieldBits &ftp,
+int PrintSearchResults(const ItemPtrVec &items, PWScore &, const CItemData::FieldBits &ftp,
                             std::wostream &os) {
   for_each( items.begin(), items.end(), [&ftp, &os](const CItemData *p) {
     const CItemData &data = *p;
@@ -139,7 +139,7 @@ int ChangePasswordOfSearchResults(const ItemPtrVec &items, PWScore &core)
   return PWScore::SUCCESS;
 }
 
-constexpr wchar_t SearchActionTraits<UserArgs::Delete>::prompt[];
-constexpr wchar_t SearchActionTraits<UserArgs::Update>::prompt[];
-constexpr wchar_t SearchActionTraits<UserArgs::ClearFields>::prompt[];
-constexpr wchar_t SearchActionTraits<UserArgs::ChangePassword>::prompt[];
+constexpr wchar_t *SearchActionTraits<UserArgs::Delete>::prompt;
+constexpr wchar_t *SearchActionTraits<UserArgs::Update>::prompt;
+constexpr wchar_t *SearchActionTraits<UserArgs::ClearFields>::prompt;
+constexpr wchar_t *SearchActionTraits<UserArgs::ChangePassword>::prompt;
