@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -55,25 +55,10 @@ END_EVENT_TABLE()
  * DeleteConfirmationDlg constructors
  */
 
-DeleteConfirmationDlg::DeleteConfirmationDlg(int num_children)
-: m_numchildren(num_children)
+DeleteConfirmationDlg::DeleteConfirmationDlg(wxWindow *parent, bool isGroup, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
+  : m_isGroup(isGroup)
 {
-  Init();
-}
-
-DeleteConfirmationDlg::DeleteConfirmationDlg( wxWindow* parent, int num_children, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-  : m_numchildren(num_children)
-{
-  Init();
-  Create(parent, id, caption, pos, size, style);
-}
-
-/*!
- * DeleteConfirmationDlg creator
- */
-
-bool DeleteConfirmationDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
+  wxASSERT(!parent || parent->IsTopLevel());
 ////@begin DeleteConfirmationDlg creation
   SetExtraStyle(wxWS_EX_BLOCK_EVENTS);
   wxDialog::Create( parent, id, caption, pos, size, style );
@@ -85,28 +70,11 @@ bool DeleteConfirmationDlg::Create( wxWindow* parent, wxWindowID id, const wxStr
   }
   Centre();
 ////@end DeleteConfirmationDlg creation
-  return true;
 }
 
-/*!
- * DeleteConfirmationDlg destructor
- */
-
-DeleteConfirmationDlg::~DeleteConfirmationDlg()
+DeleteConfirmationDlg* DeleteConfirmationDlg::Create(wxWindow *parent, bool isGroup, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
 {
-////@begin DeleteConfirmationDlg destruction
-////@end DeleteConfirmationDlg destruction
-}
-
-/*!
- * Member initialisation
- */
-
-void DeleteConfirmationDlg::Init()
-{
-////@begin DeleteConfirmationDlg member initialisation
-  m_areyousure = nullptr;
-////@end DeleteConfirmationDlg member initialisation
+  return new DeleteConfirmationDlg(parent, isGroup, id, caption, pos, size, style);
 }
 
 /*!
@@ -121,9 +89,9 @@ void DeleteConfirmationDlg::CreateControls()
   itemDialog1->SetSizer(itemBoxSizer2);
 
   m_areyousure = new wxStaticText( itemDialog1, wxID_STATIC,
-                                   m_numchildren == 0 ?
-                                   _("Are you sure you want to delete the selected entry?") :
-                                   _("Are you sure you want to delete the selected group?"),
+                                  m_isGroup ?
+                                   _("Are you sure you want to delete the selected group?") :
+                                   _("Are you sure you want to delete the selected entry?"),
                                    wxDefaultPosition, wxDefaultSize, 0 );
   itemBoxSizer2->Add(m_areyousure, 0, wxALIGN_CENTER_HORIZONTAL|wxALL, 5);
 
@@ -131,15 +99,15 @@ void DeleteConfirmationDlg::CreateControls()
   itemCheckBox4->SetValue(false);
 
   itemBoxSizer2->Add(itemCheckBox4, 0, wxALIGN_LEFT|wxALL, 5);
-  itemCheckBox4->Show(m_numchildren == 0); // can't shut this up for group deletes
-  
+  itemCheckBox4->Show(!m_isGroup); // Don't show the "Don't ask" checkbox for group deletes
+
   wxStdDialogButtonSizer* itemStdDialogButtonSizer5 = new wxStdDialogButtonSizer;
 
   itemBoxSizer2->Add(itemStdDialogButtonSizer5, 0, wxALIGN_CENTER_HORIZONTAL|wxALL, 5);
-  wxButton* itemButton6 = new wxButton( itemDialog1, wxID_YES, _("&Yes"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxButton* itemButton6 = new wxButton( itemDialog1, wxID_YES, _("&Delete"), wxDefaultPosition, wxDefaultSize, 0 );
   itemStdDialogButtonSizer5->AddButton(itemButton6);
 
-  wxButton* itemButton7 = new wxButton( itemDialog1, wxID_NO, _("&No"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxButton* itemButton7 = new wxButton( itemDialog1, wxID_NO, _("&Cancel"), wxDefaultPosition, wxDefaultSize, 0 );
   itemButton7->SetDefault();
   itemStdDialogButtonSizer5->AddButton(itemButton7);
 

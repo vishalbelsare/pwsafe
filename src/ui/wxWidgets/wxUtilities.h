@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -13,10 +13,12 @@
 #ifndef _WXUTILITIES_H_
 #define _WXUTILITIES_H_
 
+#include <wx/bmpbuttn.h>
 #include <wx/eventfilter.h>
 #include <wx/dataobj.h>
 #include <wx/panel.h>
 #include <wx/spinctrl.h>
+#include <wx/stattext.h>
 #include <wx/stream.h>
 #include <wx/textctrl.h>
 #include <wx/toplevel.h>
@@ -25,7 +27,10 @@
 #include "core/StringX.h"
 #include "core/PWSprefs.h"
 
+#include "SafeCombinationCtrl.h"
+
 #include <set>
+#include <tuple>
 
 #if !wxCHECK_VERSION(3,1,0)
 #define wxOVERRIDE
@@ -176,14 +181,85 @@ inline const wxChar* ToStr(bool b) {
   return b? wxT("True"): wxT("False");
 }
 
-void HideWindowRecursively(wxTopLevelWindow* win);
-void ShowWindowRecursively(wxTopLevelWindow* win);
-int CountTopLevelWindowRecursively(wxTopLevelWindow* win);
-void CloseChildWindowRecursively(wxTopLevelWindow* win, wxTopLevelWindow* top);
+/**
+ * The purpose of this function is to add/remove the style flags "wxTE_PASSWORD" or "wxTE_READONLY" to/from a wxTextCtrl.
+ *
+ * According to the documentation of wxTextCtrl the style flags "wxTE_PASSWORD" and "wxTE_READONLY" can be changed during
+ * runtime under wxGTK but not wxMSW. This circumstance is taken into account by this function.
+ *
+ * In the current version, under wxGTK the style flag is applied dynamically to the text control and on other platforms
+ * the text control is replaced by a newly created one with the desired style flag.
+ *
+ * @param sizer the sizer to which the text control belongs
+ * @param textCtrl the control whose style are to be changed
+ * @param text the text to update the text control with
+ * @param before the control element in the layout before "textCtrl" to respect the TAB order
+ * @param style the new style flag for "textCtrl" (previous flags will not be preserved)
+ *
+ * @note See <a href="https://docs.wxwidgets.org/stable/classwx_text_ctrl.html">Styles</a> section of wxTextCtrl
+ *       documentation about restrictions.
+ */
+void UpdatePasswordTextCtrl(wxSizer *sizer, wxTextCtrl* &textCtrl, const wxString text, wxTextCtrl* before, const int style);
 
-// Workaround for wxTE_PASSWORD being immutable:
-void ShowHideText(wxTextCtrl *&txtCtrl, const wxString &text,
-                  wxSizer *sizer, bool show);
+/**
+ * Check whether the password passes the strength rules, prompt the user if it does not.
+ *
+ * @param win Parent window for the prompt dialog
+ * @param password the proposed password
+ * @returns true if okay to use password, false if not
+ */
+bool CheckPasswordStrengthAndWarn(wxWindow *win, StringX &password);
+
+namespace wxUtilities
+{
+  /**
+   * Creates a label (wxStaticText) and password entry field (SafeCombinationCtrl) both vertically aligned.
+   * 
+   * @param parent the parent widget of both controls.
+   * @param id the id for the password entry field (SafeCombinationCtrl).
+   * @param label the label for the pasword entry field.
+   * @param password the password provided by the password entry control.
+   * @param hasFocus indicates whether the password entry should get the focus.
+   *                 Usefull if more than one password entry field is created for a dialog.
+   * @returns the created password entry control.
+   */
+  SafeCombinationCtrl* CreateLabeledSafeCombinationCtrl(wxWindow *parent, wxWindowID id, const wxString& label, StringX* password, bool hasFocus = true);
+
+  /**
+   * Creates the YubiKey controls, which are a button (wxBitmapButton) and
+   * a text control (wxStaticText) for representing status information.
+   * 
+   * @param parent the parent widget of both controls.
+   * @param buttonId the id for the button (wxBitmapButton).
+   * @param statusTextId the id for the status text (wxStaticText).
+   * @returns a pointer to both controls in a tuple.
+   */
+  std::tuple<wxBitmapButton*, wxStaticText*> CreateYubiKeyControls(wxWindow *parent, wxWindowID buttonId, wxWindowID statusTextId);
+
+  /**
+   * A helper function for easier access to the result of 'CreateYubiKeyControls'.
+   * 
+   * @param controls tuple with pointer to a wxBitmapButton and a wxStaticText.
+   * @returns the pointer to the wxBitmapButton (the YubiKey button control).
+   */
+  wxBitmapButton* GetYubiKeyButtonControl(std::tuple<wxBitmapButton*, wxStaticText*>& controls);
+
+  /**
+   * A helper function for easier access to the result of 'CreateYubiKeyControls'.
+   * 
+   * @param controls a tuple with pointer to a wxBitmapButton and a wxStaticText.
+   * @returns the pointer to the wxStaticText (the YubiKey status text control).
+   */
+  wxStaticText* GetYubiKeyStatusControl(std::tuple<wxBitmapButton*, wxStaticText*>& controls);
+
+  /**
+   * Provides a bitmap resource
+   * 
+   * @param name to a XPM file with image data, e.g. 'graphics/Yubikey-button.xpm'
+   * @returns a bitmap resource.
+   */
+  wxBitmap GetBitmapResource(const wxString& name);
+}
 
 //ensures at least one of the checkboxes are selected
 class MultiCheckboxValidator: public wxValidator
@@ -354,9 +430,47 @@ public:
 typedef wxTextDataObject wxTextDataObjectEx;
 #endif // __WXGTK20__
 
+bool IsCurrentDesktopKde();
+
+namespace wxUtilities
+{
+  enum Feature { Autotype };
+
+  /**
+   * @brief Checks environment variable 'XDG_SESSION_TYPE' for display manager 'x11'.
+   *
+   * @return whether the environment variable is set to 'x11'.
+   */
+  bool IsDisplayManagerX11();
+
+  /**
+   * @brief Checks if virtual keyboard is supported.
+   * 
+   * @return IsDisplayManagerX11() on Linux, true on Mac, and false on Windows.
+   */
+  bool IsVirtualKeyboardSupported();
+
+  /**
+   * @brief Disables a control for the specified feature(s).
+   * 
+   * @param control the control to disable.
+   */
+  void DisableIfUnsupported(enum Feature feature, wxWindow* window);
+}
+
 // Wrapper for wxTaskBarIcon::IsAvailable() that doesn't crash
 // on Fedora or Ubuntu
 bool IsTaskBarIconAvailable();
+
+/**
+ * @brief Creates a taskbar icon with text overlay.
+ *
+ * @param icon the icon that is acting as basis for the overlay
+ * @param color the overlay color
+ * @param text the overlay text
+ * @return wxIcon the icon with text overlay
+ */
+wxIcon CreateIconWithOverlay(const wxIcon& icon, const wxColour& color, const wxString& text);
 
 /**
  * Fixes a spinners initial, resp. minimum required size that is needed to fully show the control.
@@ -401,6 +515,34 @@ private:
   double m_ImageAspectRatio;  // The image's aspect ratio.
   wxImage m_Image;            // The non-scaled image.
   wxBitmap m_Bitmap;          // The possibly scaled bitmap representation of the image.
+};
+
+bool IsCloseInProgress();
+
+template <class Dlg, typename... Args> int ShowModalAndGetResult(Args&&... args) {
+  Dlg* ptr = Dlg::Create(std::forward<Args>(args)...);
+  int result = ptr->ShowModal();
+  ptr->Destroy();
+  return result;
+}
+
+template<class T> class DestroyWrapper {
+public:
+  template<typename... Args>
+  DestroyWrapper(Args&&... args) : m_ptr(T::Create(std::forward<Args>(args)...)) {
+  }
+
+  ~DestroyWrapper() {
+    if (m_ptr) {
+      m_ptr->Destroy();
+    }
+  }
+
+  T* Get() {
+    return m_ptr;
+  }
+private:
+  T *m_ptr;
 };
 
 #endif // _WXUTILITIES_H_

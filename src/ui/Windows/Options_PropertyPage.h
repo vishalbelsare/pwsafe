@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -88,11 +88,13 @@ struct st_Opt_master_data {
   // Security Data
   BOOL ClearClipboardOnMinimize;
   BOOL ClearClipboardOnExit;
+  BOOL ExcludeFromClipboardHistory;
   BOOL LockOnMinimize;
   BOOL ConfirmCopy;
   BOOL LockOnWindowLock;
   BOOL LockOnIdleTimeout;
   BOOL CopyPswdBrowseURL;
+  BOOL ExcludeFromScreenCapture;
   int IdleTimeOut;
   uint32 HashIters;
   // Preferences min/max values
@@ -206,11 +208,13 @@ public:
   // Security Data
   inline BOOL &M_ClearClipboardOnMinimize() {return m_OPTMD.ClearClipboardOnMinimize;}
   inline BOOL &M_ClearClipboardOnExit() {return m_OPTMD.ClearClipboardOnExit;}
+  inline BOOL& M_ExcludefromClipboardHistory() {return m_OPTMD.ExcludeFromClipboardHistory;}
   inline BOOL &M_LockOnMinimize() {return m_OPTMD.LockOnMinimize;}
   inline BOOL &M_ConfirmCopy() {return m_OPTMD.ConfirmCopy;}
   inline BOOL &M_LockOnWindowLock() {return m_OPTMD.LockOnWindowLock;}
   inline BOOL &M_LockOnIdleTimeout() {return m_OPTMD.LockOnIdleTimeout;}
   inline BOOL &M_CopyPswdBrowseURL() {return m_OPTMD.CopyPswdBrowseURL;}
+  inline BOOL &M_ExcludeFromScreenCapture() {return m_OPTMD.ExcludeFromScreenCapture;}
   inline int &M_IdleTimeOut() {return m_OPTMD.IdleTimeOut;}
   inline uint32 &M_HashIters() {return m_OPTMD.HashIters;}
   // Preferences min/max values

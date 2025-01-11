@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -36,7 +36,7 @@
 #include <sstream>
 #include <iomanip>
 
-#include <errno.h>
+#include <cerrno>
 
 using namespace std;
 
@@ -53,28 +53,54 @@ static void xormem(unsigned char *mem1, const unsigned char *mem2, int length)
 // (2) The wrong way to scrub DRAM memory
 // see http://www.cs.auckland.ac.nz/~pgut001/pubs/secure_del.html
 // and http://www.cypherpunks.to/~peter/usenix01.pdf
-
-#ifdef _WIN32
-#pragma optimize("",off)
-#endif
-void trashMemory(void *buffer, size_t length)
+namespace
 {
-  // {kjp} no point in looping around doing nothing is there?
-  if (buffer != nullptr && length > 0) {
-    std::memset(buffer, 0x55, length);
-    std::memset(buffer, 0xAA, length);
-    std::memset(buffer,    0, length);
+// Try OpenSSL's approach of forcing the call to memset through
+// a volatile function pointer.
+// https://github.com/openssl/openssl/blob/master/crypto/mem_clr.c
+
+typedef void* (*memset_t)(void*, int, size_t);
+
+volatile memset_t memset_vol = memset;
+
+void secure_memset(void* buffer, int value, size_t length)
+{
+    memset_vol(buffer, value, length);
 #ifdef __GNUC__
     // break compiler optimization of this function for gcc
     // see trick used in google's boring ssl:
     // https://boringssl.googlesource.com/boringssl/+/ad1907fe73334d6c696c8539646c21b11178f20f%5E!/#F0
     __asm__ __volatile__("" : : "r"(buffer) : "memory");
 #endif
-  }
 }
+
+void secure_zero(void* buffer, size_t length)
+{
 #ifdef _WIN32
-#pragma optimize("",on)
+    SecureZeroMemory(buffer, length);
+#else
+    memset_vol(buffer, 0, length);
+#ifdef __GNUC__
+    // break compiler optimization of this function for gcc
+    // see trick used in google's boring ssl:
+    // https://boringssl.googlesource.com/boringssl/+/ad1907fe73334d6c696c8539646c21b11178f20f%5E!/#F0
+    __asm__ __volatile__("" : : "r"(buffer) : "memory");
 #endif
+#endif
+}
+}
+
+void trashMemory(void *buffer, size_t length)
+{
+  // {kjp} no point in looping around doing nothing is there?
+  if (buffer == nullptr || length <= 0)
+      return;
+
+  secure_memset(buffer, 0x55, length);
+  secure_memset(buffer, 0xAA, length);
+  secure_zero(buffer, length);
+}
+
 void trashMemory(LPTSTR buffer, size_t length)
 {
   trashMemory(reinterpret_cast<unsigned char *>(buffer), length * sizeof(buffer[0]));
@@ -193,7 +219,6 @@ size_t _writecbc1st(FILE* fp, const unsigned char** buffer, size_t *length, unsi
 
   unsigned char* curblock = nullptr;
   ASSERT(BS <= sizeof(block1)); // if needed we can be more sophisticated here...
-
   curblock = block1;
   // Fill unused bytes of length with random data, to make
   // a dictionary attack harder
@@ -467,43 +492,68 @@ size_t PWSUtil::strLength(const LPCTSTR str)
   return _tcslen(str);
 }
 
+#ifndef _WIN32
+bool StringX_asctime_r(const struct tm* st, StringX& sx)
+{
+  CUTF8Conv conv;
+  char buf[30];
+  bool is_error = asctime_r(st, buf) == NULL;
+  if (!is_error)
+    is_error = !conv.FromUTF8(reinterpret_cast<const unsigned char*>(buf), strlen(buf), sx);
+  if (is_error)
+    sx.clear();
+  return is_error;
+}
+#endif
+
 const TCHAR *PWSUtil::UNKNOWN_XML_TIME_STR = _T("1970-01-01T00:00:00");
 const TCHAR *PWSUtil::UNKNOWN_ASC_TIME_STR = _T("Unknown");
 
-StringX PWSUtil::ConvertToDateTimeString(const time_t &t, TMC result_format)
+StringX PWSUtil::ConvertToDateTimeString(const time_t &t, TMC result_format, bool convert_epoch, bool utc_time)
 {
   StringX ret;
-  if (t != 0) {
-    TCHAR datetime_str[80];
+  if (t != 0 || convert_epoch) {
     struct tm *st;
     struct tm st_s;
-    errno_t err;
-    err = localtime_s(&st_s, &t);  // secure version
-    if (err != 0) // invalid time
+    bool is_error;
+    if (utc_time) {
+#ifdef _WIN32
+      is_error = gmtime_s(&st_s, &t) != 0;
+#else
+      st = gmtime_r(&t, &st_s);
+      is_error = st == NULL;
+#endif
+    }
+    else
+      is_error = localtime_s(&st_s, &t) != 0;
+    if (is_error) // invalid time
       return ConvertToDateTimeString(0, result_format);
     st = &st_s; // hide difference between versions
+    TCHAR datetime_str[80];
     switch (result_format) {
     case TMC_EXPORT_IMPORT:
-      _tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]),
-                _T("%Y/%m/%d %H:%M:%S"), st);
+      is_error = !_tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]), _T("%Y/%m/%d %H:%M:%S"), st);
       break;
     case TMC_XML:
-      _tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]),
-                _T("%Y-%m-%dT%H:%M:%S"), st);
+      is_error = !_tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]), _T("%Y-%m-%dT%H:%M:%S"), st);
       break;
     case TMC_LOCALE:
-      _tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]),
-                _T("%c"), st);
+      is_error = !_tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]), _T("%c"), st);
       break;
     case TMC_LOCALE_DATE_ONLY:
-      _tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]),
-                _T("%x"), st);
+      is_error = !_tcsftime(datetime_str, sizeof(datetime_str) / sizeof(datetime_str[0]), _T("%x"), st);
       break;
     default:
-      if (_tasctime_s(datetime_str, 32, st) != 0)
-        return ConvertToDateTimeString(0, result_format);
+#ifdef _WIN32
+      is_error = _tasctime_s(datetime_str, 32, st) != 0;
+#else
+      is_error = StringX_asctime_r(st, ret);
+#endif
     }
-    ret = datetime_str;
+    if (is_error)
+      return ConvertToDateTimeString(0, result_format);
+    if (ret.empty())
+      ret = datetime_str;
   } else { // t == 0
     switch (result_format) {
     case TMC_ASC_UNKNOWN:
@@ -579,7 +629,7 @@ stringT PWSUtil::Base64Encode(const BYTE *strIn, size_t len)
 {
   stringT cs_Out;
   static const TCHAR base64ABC[] =
-    _S("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+    _T("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
 
   for (size_t i = 0; i < len; i += 3) {
     long l = ( static_cast<long>(strIn[i]) << 16 ) |
@@ -759,10 +809,11 @@ bool PWSUtil::WriteXMLField(ostream &os, const char *fname,
 }
 
 string PWSUtil::GetXMLTime(int indent, const char *name,
-                           time_t t, CUTF8Conv &utf8conv)
+                           time_t t, CUTF8Conv &utf8conv,
+                           bool convert_epoch, bool utc_time)
 {
   int i;
-  const StringX tmp = PWSUtil::ConvertToDateTimeString(t, TMC_XML);
+  const StringX tmp = PWSUtil::ConvertToDateTimeString(t, TMC_XML, convert_epoch, utc_time);
   ostringstream oss;
   const unsigned char *utf8 = nullptr;
   size_t utf8Len = 0;
@@ -776,54 +827,6 @@ string PWSUtil::GetXMLTime(int indent, const char *name,
   oss.write(reinterpret_cast<const char *>(utf8), utf8Len);
   oss << "</" << name << ">" << endl;
   return oss.str();
-}
-
-/**
- * Get TCHAR buffer size by format string with parameters
- * @param[in] fmt - format string
- * @param[in] args - arguments for format string
- * @return buffer size including nullptr-terminating character
-*/
-unsigned int GetStringBufSize(const TCHAR *fmt, va_list args)
-{
-  TCHAR *buffer=nullptr;
-
-  unsigned int len = 0;
-
-#ifdef _WIN32
-  len = _vsctprintf(fmt, args) + 1;
-#else
-  va_list ar;
-  va_copy(ar, args);
-  // Linux doesn't do this correctly :-(
-  unsigned int guess = 16;
-  int nBytes = -1;
-  while (true) {
-    len = guess;
-    buffer = new TCHAR[len];
-    nBytes = _vstprintf_s(buffer, len, fmt, ar);
-    va_end(ar);//after using args we should reset list
-    va_copy(ar, args);
-    /*
-     * If 'nBytes' is zero due to an empty format string,
-     * it would result in an endless memory-consuming loop.
-     */
-    ASSERT(nBytes != 0);
-    if (nBytes++ > 0) {
-      len = nBytes;
-      break;
-    } else { // too small, resize & try again
-      delete[] buffer;
-      buffer = nullptr;
-      guess *= 2;
-    }
-  }
-  va_end(ar);
-#endif
-  if (buffer)
-    delete[] buffer;
-
-  return len;
 }
 
 StringX PWSUtil::DeDupString(StringX &in_string)

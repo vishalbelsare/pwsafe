@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -35,7 +35,7 @@ class QRCodeDlg : public wxDialog
   void UpdateTimeRemaining();
 
 public:
-  QRCodeDlg(wxWindow* parent,
+  static QRCodeDlg* Create(wxWindow *parent, 
             const StringX &data,
             const wxString& title,
             const int seconds = 15,
@@ -45,7 +45,11 @@ public:
             const wxString &name=wxDialogNameStr);
 
   ~QRCodeDlg() = default;
-
+protected:
+  QRCodeDlg(wxWindow *parent, const StringX &data, const wxString& title,
+            const int seconds, 
+            const wxPoint &pos, const wxSize &size, long style,
+            const wxString &name);
   //void OnInitDialog(wxInitDialogEvent& evt)  override;
   //void OnRelayoutDlg(wxCommandEvent& evt)  override;  
   void CreateControls(const StringX &data);

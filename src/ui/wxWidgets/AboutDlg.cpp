@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -63,27 +63,14 @@ const cstringT AboutDlg::s_URL_VERSION   =  "https://pwsafe.org/latest.xml";
  * AboutDlg constructors
  */
 
-AboutDlg::AboutDlg()
+AboutDlg::AboutDlg(wxWindow *parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
 {
-  Init();
-}
-
-AboutDlg::AboutDlg( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
-  Init();
-  Create(parent, id, caption, pos, size, style);
+  wxASSERT(!parent || parent->IsTopLevel());
 
   // Print version information on standard output which might be useful for error reports.
   pws_os::Trace(GetLibWxVersion().wc_str());
   pws_os::Trace(GetLibCurlVersion().wc_str());
-}
 
-/*!
- * AboutDlg creator
- */
-
-bool AboutDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
   SetExtraStyle(wxWS_EX_BLOCK_EVENTS);
   wxDialog::Create( parent, id, caption, pos, size, style );
 
@@ -99,27 +86,11 @@ bool AboutDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption,
     }
   }
   Centre();
-  return true;
 }
 
-/*!
- * AboutDlg destructor
- */
-
-AboutDlg::~AboutDlg()
+AboutDlg* AboutDlg::Create(wxWindow *parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
 {
-////@begin AboutDlg destruction
-////@end AboutDlg destruction
-}
-
-/*!
- * Member initialization
- */
-
-void AboutDlg::Init()
-{
-  m_VersionStatus = nullptr;
-  m_CurlHandle = nullptr;
+  return new AboutDlg(parent, id, caption, pos, size, style);
 }
 
 /*!
@@ -142,28 +113,28 @@ void AboutDlg::CreateControls()
   wxStaticText* versionStaticText = new wxStaticText(aboutDialog, wxID_VERSIONSTR, _("Password Safe")+wxT(" vx.yy (abcd)"), wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
   rightSizer->Add(versionStaticText, 0, wxALIGN_LEFT|wxALL, 5);
 
+  wxStaticText* wxVersionStaticText = new wxStaticText(aboutDialog, wxID_STATIC, _("Built using ") + wxGetLibraryVersionInfo().GetVersionString(), wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
+  rightSizer->Add(wxVersionStaticText, 0, wxALIGN_LEFT|wxALL, 5);
+
   wxStaticText* buildStaticText = new wxStaticText(aboutDialog, wxID_STATIC, _("Build date:")+wxT(" Mon dd yyyy hh:mm:ss"), wxDefaultPosition, wxDefaultSize, 0);
   rightSizer->Add(buildStaticText, 0, wxALIGN_LEFT|wxALL, 5);
 
   wxBoxSizer* verCheckSizer = new wxBoxSizer(wxHORIZONTAL);
   rightSizer->Add(verCheckSizer, 0, wxALIGN_LEFT|wxALL, 0);
 
-  wxStaticText* latestStaticTextBegin = new wxStaticText(aboutDialog, wxID_STATIC, _("Latest version? Click "), wxDefaultPosition, wxDefaultSize, 0 );
-  verCheckSizer->Add(latestStaticTextBegin, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM|wxLEFT, 5);
+  wxGenericHyperlinkCtrl* latestCheckButton = new wxGenericHyperlinkCtrl(aboutDialog, ID_CHECKNEW, _("Check"), wxEmptyString, wxDefaultPosition, wxDefaultSize, wxHL_DEFAULT_STYLE);
+  verCheckSizer->Add(latestCheckButton, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM|wxLEFT, 5);
 
-  wxGenericHyperlinkCtrl* latestCheckButton = new wxGenericHyperlinkCtrl(aboutDialog, ID_CHECKNEW, _("here"), wxEmptyString, wxDefaultPosition, wxDefaultSize, wxHL_DEFAULT_STYLE);
-  verCheckSizer->Add(latestCheckButton, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM, 5);
-
-  wxStaticText* latestStaticTextEnd = new wxStaticText(aboutDialog, wxID_STATIC, _(" to check."), wxDefaultPosition, wxDefaultSize, 0);
+  wxStaticText* latestStaticTextEnd = new wxStaticText(aboutDialog, wxID_STATIC, _(" for the latest version."), wxDefaultPosition, wxDefaultSize, 0);
   verCheckSizer->Add(latestStaticTextEnd, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM|wxRIGHT, 5);
 
   wxBoxSizer* visitSiteSizer = new wxBoxSizer(wxHORIZONTAL);
   rightSizer->Add(visitSiteSizer, 0, wxALIGN_LEFT|wxALL, 0);
 
-  wxStaticText* visitSiteStaticTextBegin = new wxStaticText(aboutDialog, wxID_STATIC, _("Please visit the "), wxDefaultPosition, wxDefaultSize, 0);
+  wxStaticText* visitSiteStaticTextBegin = new wxStaticText(aboutDialog, wxID_STATIC, _("Visit the "), wxDefaultPosition, wxDefaultSize, 0);
   visitSiteSizer->Add(visitSiteStaticTextBegin, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM|wxLEFT, 5);
 
-  wxGenericHyperlinkCtrl* visitSiteHyperlinkCtrl = new wxGenericHyperlinkCtrl(aboutDialog, ID_SITEHYPERLINK, _("PasswordSafe website"), wxEmptyString, wxDefaultPosition, wxDefaultSize, wxHL_DEFAULT_STYLE);
+  wxGenericHyperlinkCtrl* visitSiteHyperlinkCtrl = new wxGenericHyperlinkCtrl(aboutDialog, ID_SITEHYPERLINK, _("Password Safe website"), wxEmptyString, wxDefaultPosition, wxDefaultSize, wxHL_DEFAULT_STYLE);
   visitSiteSizer->Add(visitSiteHyperlinkCtrl, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM, 5);
 
   wxStaticText* visitSiteStaticTextEnd = new wxStaticText(aboutDialog, wxID_STATIC, _("."), wxDefaultPosition, wxDefaultSize, 0);
@@ -172,7 +143,7 @@ void AboutDlg::CreateControls()
   wxStaticText* licenseStaticTextEnd = new wxStaticText(aboutDialog, wxID_STATIC, _("See LICENSE for open source details."), wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
   rightSizer->Add(licenseStaticTextEnd, 0, wxALIGN_LEFT|wxALL, 5);
 
-  wxStaticText* copyrightStaticText = new wxStaticText(aboutDialog, wxID_STATIC, _("Copyright (c) 2003-2021 Rony Shapiro"), wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
+  wxStaticText* copyrightStaticText = new wxStaticText(aboutDialog, wxID_STATIC, _("Copyright (c) 2003-2025 Rony Shapiro"), wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
   rightSizer->Add(copyrightStaticText, 0, wxALIGN_LEFT|wxALL, 5);
 
   m_VersionStatus = new wxTextCtrl(aboutDialog, ID_TEXTCTRL, wxT("\n\n"), wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_READONLY|wxNO_BORDER);
@@ -446,21 +417,17 @@ bool AboutDlg::CheckDatabaseStatus()
     // Notify PasswordSafeFrame to close database.
     // If there are any unsaved changes PasswordSafeFrame 
     // will prompt the user to save them.
-    wxCommandEvent closeEvent(wxEVT_COMMAND_MENU_SELECTED, wxID_CLOSE);
-#if wxCHECK_VERSION(2,9,0)
-    pwsafe->GetEventHandler()->ProcessEvent(closeEvent);
-#else
-    pwsafe->ProcessEvent(closeEvent);
-#endif
-
-    // Check database once again, because user could have cancelled to save changes.
-    if (!pwsafe->IsClosed()) {
-      return false;
-    }
+    pwsafe->CloseDB([this](bool closed) {
+      if (closed) {
+        // database closed. Close the existing About dialog then reopen and check
+        Close();
+        DestroyWrapper<AboutDlg> wrapper(wxGetApp().GetPasswordSafeFrame());
+        wrapper.Get()->ShowAndCheckForUpdate();
+      }
+    });
+    return false; // stop here, callback will restart
   }
 
-  // Update UI accordingly to show user that database is closed.
-  pwsafe->Update();
   ASSERT(pwsafe->GetNumEntries() == 0);
 
   // Now, database is closed.
@@ -573,7 +540,7 @@ void AboutDlg::CompareVersionData()
       wxString newer(_("Current version: "));
       newer << pwsafeVersionString << L"\n";
       newer << _("Latest version:\t") << latest.c_str() << L"\n\n";
-      newer << _("Please visit the PasswordSafe website to download the latest version.");
+      newer << _("Visit the Password Safe website to download the latest version.");
       const wxString cs_title(_("Newer Version Found!"));
       *m_VersionStatus << cs_title;
       wxMessageDialog dlg(this, newer, cs_title, wxOK);
@@ -705,4 +672,10 @@ void AboutDlg::OnDownloadCompleted(wxThreadEvent& event)
  */
 void AboutDlg::OnVisitSiteClicked(wxHyperlinkEvent& WXUNUSED(event)) {
   wxLaunchDefaultBrowser(s_URL_HOME);
+}
+
+
+int AboutDlg::ShowAndCheckForUpdate() {
+  CallAfter(&AboutDlg::CheckNewVersion);
+  return ShowModal();
 }

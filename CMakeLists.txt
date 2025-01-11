@@ -1,18 +1,17 @@
-if (WIN32)
-  cmake_minimum_required (VERSION 3.5.1)
-else (WIN32)
-  # oldest cmake version is currently on CentOS 7:
-  cmake_minimum_required (VERSION 2.8)
-endif (WIN32)
-if (POLICY CMP0069)
-  cmake_policy(SET CMP0069 NEW)
-endif (POLICY CMP0069)
-
-if (POLICY CMP0048)
-  cmake_policy(SET CMP0048 NEW)
-endif (POLICY CMP0048)
+cmake_minimum_required (VERSION 3.13...3.25) # 3.13 is used by Debian 10
 
 project (passwordsafe CXX C)
+
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+# wxWidgets 3.2.1 doesn't compile under C++17 on some distros.
+# 3.0.5 is fine, though...
+# Need to revisit this and remove when no longer an issue
+if (NOT WIN32 OR WX_WINDOWS)
+    set(CMAKE_CXX_STANDARD 14)
+else (NOT WIN32 OR WX_WINDOWS)
+    set(CMAKE_CXX_STANDARD 17)
+endif (NOT WIN32 OR WX_WINDOWS)
 
 # prerequisites
 include(CheckLibraryExists)
@@ -25,62 +24,31 @@ else (${CHECK_IPO_FOUND} STREQUAL "NOTFOUND")
   check_ipo_supported(RESULT IPO_SUPPORTED)
 endif (${CHECK_IPO_FOUND} STREQUAL "NOTFOUND")
 
+if (IPO_SUPPORTED)
+  option(USE_INTERPROCEDURAL_OPTIMIZATION "Enable interprocedural optimization (LTO/LTCG)" ON)
+
+  if (USE_INTERPROCEDURAL_OPTIMIZATION)
+    message(STATUS "Interprocedural optimization (LTO/LTCG) is enabled.")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
+
+    # Propagate IPO settings to subdirectories
+    set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+  endif ()
+endif (IPO_SUPPORTED)
+
+if (UNIX)
+  set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+endif ()
+
 if (NOT WIN32)
 include(FindUnixCommands)
 endif (NOT WIN32)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
 
-# Version configuration:
-# version.mfc for Windows MFC build, version.wx for all the rest
-# version file has the following format:
-# VER_MAJOR = n
-# VER_MINOR = n
-# VER_REV = n (default 0)
-# VER_SPECIAL = text [or not set]
-# where VER_MAJOR and VER_MINOR are mandatory, and all except
-# VER_SPECIAL must be integers
+include(create-harden-interface)
 
-if (WIN32 AND NOT WX_WINDOWS)
-   set (VERSION_FILE "${PROJECT_SOURCE_DIR}/version.mfc")
-else (WIN32 AND NOT WX_WINDOWS)
-   set (VERSION_FILE "${PROJECT_SOURCE_DIR}/version.wx")
-endif (WIN32 AND NOT WX_WINDOWS)
-
-if (NOT EXISTS ${VERSION_FILE})
-  message (FATAL_ERROR "Missing ${VERSION_FILE} - unable to proceed")
-endif (NOT EXISTS ${VERSION_FILE})
-
-file ( STRINGS ${VERSION_FILE} VERSION_LIST )
-
-foreach ( VERSION_ITEM IN ITEMS ${VERSION_LIST} )
-  if (${VERSION_ITEM} MATCHES "^[ ]*VER_MAJOR[ ]*=[ ]*([0-9]+)")
-    string (REGEX REPLACE ".*=[ ]*([0-9]+)" "\\1"
-            pwsafe_VERSION_MAJOR ${VERSION_ITEM})
-  elseif (${VERSION_ITEM} MATCHES "^[ ]*VER_MINOR[ ]*=[ ]*([0-9]+)")
-    string (REGEX REPLACE ".*=[ ]*([0-9]+)" "\\1"
-            pwsafe_VERSION_MINOR ${VERSION_ITEM})
-  elseif (${VERSION_ITEM} MATCHES "^[ ]*VER_REV[ ]*=[ ]*([0-9]+)")
-    string (REGEX REPLACE ".*=[ ]*([0-9]+)" "\\1"
-            pwsafe_REVISION ${VERSION_ITEM})
-  elseif (${VERSION_ITEM} MATCHES "^[ ]*VER_SPECIAL[ ]*=[ ]*(.+)")
-    string (REGEX REPLACE ".*=[ ]*(.+)" "\\1"
-            pwsafe_SPECIALBUILD ${VERSION_ITEM})
-  endif ()
-endforeach ( VERSION_ITEM )
-
-if (NOT DEFINED pwsafe_VERSION_MAJOR)
-  message (FATAL_ERROR "VER_MAJOR undefined in ${VERSION_FILE} - unable to proceed")
-endif (NOT DEFINED pwsafe_VERSION_MAJOR)
-if (NOT DEFINED pwsafe_VERSION_MINOR)
-  message (FATAL_ERROR "VER_MINOR undefined in ${VERSION_FILE} - unable to proceed")
-endif (NOT DEFINED pwsafe_VERSION_MINOR)
-
-if (pwsafe_REVISION)
-   set (pwsafe_VERSION "${pwsafe_VERSION_MAJOR}.${pwsafe_VERSION_MINOR}.${pwsafe_REVISION}")
-else ()
-   set (pwsafe_VERSION "${pwsafe_VERSION_MAJOR}.${pwsafe_VERSION_MINOR}.0")
-endif (pwsafe_REVISION)
 
 # Configurable options:
 option (NO_YUBI "Set ON to disable YubiKey support" OFF)
@@ -149,7 +117,11 @@ if (NOT WIN32)
     if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
       set( CMAKE_REQUIRED_INCLUDES "/usr/local/include" )
     endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-  CHECK_INCLUDE_FILE("uuid/uuid.h" UUID_H)
+    if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+	  CHECK_INCLUDE_FILE("uuid.h" UUID_H)
+    else ()
+	  CHECK_INCLUDE_FILE("uuid/uuid.h" UUID_H)
+    endif (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
   if (NOT UUID_H)
     message(FATAL_ERROR
       "uuid.h not found - uuid-dev / libuuid-devel not installed?")
@@ -210,15 +182,12 @@ include_directories ("${PROJECT_SOURCE_DIR}/src"
   "${PROJECT_SOURCE_DIR}/src/core"
   "${PROJECT_SOURCE_DIR}/src/ui/wxWidgets")
 
-execute_process(COMMAND "git" "describe" "--all" "--always" "--dirty=+" "--long"
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  RESULT_VARIABLE res
-  OUTPUT_VARIABLE pwsafe_VERSTRING
-  ERROR_QUIET
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
-if (res)
-  set(pwsafe_VERSTRING "local")
-endif()
+add_compile_definitions(
+  __STDC_WANT_LIB_EXT1__=1
+  UNICODE
+  $<$<CONFIG:DEBUG>:_DEBUG>
+  $<$<NOT:$<CONFIG:DEBUG>>:NDEBUG>
+)
 
 # Assume that we're either MSVC or a Unix-like
 if (MSVC)
@@ -229,26 +198,18 @@ set (CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR})
 
 set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} /MP /GS /analyze- /W4 /Gy /Zc:wchar_t /Zi /Gm- /EHsc
-  /Ob1 /fp:precise /D WIN32 /D _CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1 /D _CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES_COUNT=1 /D WINVER=0x0A00 /D _USING_V110_SDK71_ /D UNICODE /D _UNICODE /GF /WX- /Zc:forScope /RTC1 /Gd /Oy-")
-
 if (NO_YUBI)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_YUBI")
 endif (NO_YUBI)
-
 
 if (WX_WINDOWS)
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D __WX__")
 endif (WX_WINDOWS)
 
-set(CMAKE_CXX_FLAGS_DEBUG " /Od  /D _DEBUG /WX- /Gd /Oy- /Ob0 /Od /MTd")
-
-set(CMAKE_CXX_FLAGS_RELEASE "/MT /O2 /Ob2 /D NDEBUG  /W4 /Zc:wchar_t  /Od /WX-")
-
+include(set-options-msvc)
 else ()
 set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} -fPIC -Wall -std=gnu++11 -DUNICODE -DWCHAR_INCOMPATIBLE_XMLCH ${CMAKE_WXWINDOWS_CXX_FLAGS}")
+  "${CMAKE_CXX_FLAGS} -Wall -DUNICODE -DWCHAR_INCOMPATIBLE_XMLCH ${CMAKE_WXWINDOWS_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG -DDEBUG")
 if (USE_ASAN)
   set(CMAKE_CXX_FLAGS_DEBUG
@@ -284,17 +245,6 @@ if (NOT NO_GTEST AND GTEST_BUILD)
                        )
 endif(NOT NO_GTEST AND GTEST_BUILD)
 
-if (WIN32 AND NOT WX_WINDOWS)
-  set(VERSION_IN "${PROJECT_SOURCE_DIR}/src/ui/Windows/version.in")
-else (WIN32 AND NOT WX_WINDOWS)
-  set(VERSION_IN "${PROJECT_SOURCE_DIR}/src/ui/wxWidgets/version.in")
-endif (WIN32 AND NOT WX_WINDOWS)
-
-configure_file (
-  ${VERSION_IN}
-  ${PROJECT_BINARY_DIR}/version.h
-  )
-
 if( NOT CMAKE_BUILD_TYPE )
   set( CMAKE_BUILD_TYPE Release )
 endif( NOT CMAKE_BUILD_TYPE )
@@ -309,6 +259,8 @@ if (NOT MSVC)
    # (b) -O3 is the default for cmake
    set (CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 endif (NOT MSVC)
+
+include(pws-version)
 
 if (WIN32)
    set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
@@ -343,15 +295,10 @@ endif()
 
 if (NOT WIN32)
   add_executable(pwsafe ${PWSAFE_SRCS})
-  if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-  # squash lintian hardening-no-relro warning, probably good for all Linuxen
-  set_target_properties(pwsafe PROPERTIES LINK_FLAGS "-z relro")
-endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 else (NOT WIN32)
    add_executable(pwsafe WIN32 ${PWSAFE_SRCS})
-   add_dependencies( pwsafe dlls) # i18n dlls
+   add_dependencies( pwsafe language-dlls) # i18n dlls
    if (NOT WX_WINDOWS)
-      set (CMAKE_MFC_FLAG 1)
       set (PWS_DLL_LIBS "pws_at" "pws_osk")
       set_target_properties(pwsafe PROPERTIES COMPILE_DEFINITIONS
                             "_BIND_TO_CURRENT_CRT_VERSION;_BIND_TO_CURRENT_MFC_VERSION"
@@ -366,6 +313,8 @@ target_link_libraries(pwsafe core os)
 if (XML_XERCESC)
   target_link_libraries(pwsafe ${XercesC_LIBRARY})
 endif (XML_XERCESC)
+
+target_link_libraries(pwsafe pws_version)
 
 if (APPLE)
   FIND_LIBRARY(QUARTZCORE_LIBS QuartzCore)
@@ -385,23 +334,22 @@ else ()
   ${CMAKE_REQUIRED_LIBRARIES})
 endif()
 
-if (IPO_SUPPORTED)
-  set_property(TARGET pwsafe PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE True)
-endif (IPO_SUPPORTED)
-
 # Installation stuff (for 'make install', but mainly for 'make package')
 install (TARGETS pwsafe RUNTIME DESTINATION "bin")
 
+target_link_libraries(pwsafe harden_interface)
 
 if (NOT WIN32)
-  install (DIRECTORY xml DESTINATION "share/passwordsafe/")
+  install (DIRECTORY xml DESTINATION "share/passwordsafe")
   ADD_CUSTOM_COMMAND(OUTPUT ${CMAKE_BINARY_DIR}/pwsafe.1.gz
                      COMMAND ${GZIP} ARGS -9 -n -c ${PROJECT_SOURCE_DIR}/docs/pwsafe.1 > pwsafe.1.gz
                      WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
   ADD_CUSTOM_TARGET(manpage ALL DEPENDS ${CMAKE_BINARY_DIR}/pwsafe.1.gz)
-  install (FILES ${CMAKE_BINARY_DIR}/pwsafe.1.gz DESTINATION "share/man/man1") 
+  install (FILES ${CMAKE_BINARY_DIR}/pwsafe.1.gz DESTINATION "share/man/man1")
   install (FILES "install/desktop/pwsafe.desktop" DESTINATION "share/applications")
-  install (FILES "install/graphics/pwsafe.png" DESTINATION "share/icons/hicolor/48x48/apps/")
+  install (FILES "install/metainfo/org.pwsafe.pwsafe.metainfo.xml" DESTINATION "share/metainfo")
+  install (FILES "install/graphics/48x48/pwsafe.png" DESTINATION "share/icons/hicolor/48x48/apps/")
+  install (FILES "install/graphics/128x128/pwsafe.png" DESTINATION "share/icons/hicolor/128x128/apps/")
   install (DIRECTORY "${CMAKE_BINARY_DIR}/src/ui/wxWidgets/I18N/mos/"
            DESTINATION "share/locale")
 
@@ -473,9 +421,10 @@ endif (pwsafe_SPECIALBUILD)
 #
 set (CPACK_PACKAGE_CONTACT "Rony Shapiro <ronys@pwsafe.org>")
 set (CPACK_PACKAGE_VENDOR "Rony Shapiro")
-set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Password Safe is a password database utility.")
+set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Password Safe is a password management  utility.")
 set (CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set (CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/install/description.txt")
+set (CPACK_PACKAGE_URL "https://pwsafe.org/")
 set (CPACK_STRIP_FILES "TRUE")
 
 #
@@ -489,20 +438,30 @@ endif ()
 # Determine the architecture (amd64, i386, etc.) with command 'dpkg --print-architecture
 #
 if (NOT WIN32)
-    if (NOT CPACK_DEBIAN_PACKAGE_ARCHITECTURE)
+if (NOT CPACK_DEBIAN_PACKAGE_ARCHITECTURE)
       find_program(DPKG_EXECUTABLE dpkg)
       mark_as_advanced(DPKG_EXECUTABLE)
 
       if (NOT DPKG_EXECUTABLE)
-        # if we can't find dpkg, we don't really care, as this variable won't be used in this run.
-        set (CPACK_DEBIAN_PACKAGE_ARCHITECTURE i386)
+        find_program(UNAME_EXECUTABLE uname)
+        mark_as_advanced(UNAME_EXECUTABLE)
+        if (NOT UNAME_EXECUTABLE)
+          set (PACKAGE_ARCHITECTURE "")
+        else ()
+          execute_process(COMMAND "${UNAME_EXECUTABLE}" -m
+                         OUTPUT_VARIABLE PACKAGE_ARCHITECTURE)
+          string(PREPEND PACKAGE_ARCHITECTURE "-")
+          set (PACKAGE_ARCHITECTURE "")
+        endif ()
       else ()
         execute_process(COMMAND "${DPKG_EXECUTABLE}" --print-architecture
                         OUTPUT_VARIABLE CPACK_DEBIAN_PACKAGE_ARCHITECTURE
                         OUTPUT_STRIP_TRAILING_WHITESPACE)
+        set (PACKAGE_ARCHITECTURE "-${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
       endif ()
     endif ()
 endif (NOT WIN32)
+
 #
 # Determine name of distribution (Ubuntu, LinuxMint, ...)
 #
@@ -528,7 +487,7 @@ else(LSB_RELEASE_EXECUTABLE) # look for /etc/os-release
     file ( STRINGS ${OS_RELEASE_FILE} OS_RELEASE_LIST )
     foreach ( OS_RELEASE_ITEM IN ITEMS ${OS_RELEASE_LIST} )
       string (REGEX REPLACE "\;" "" OS_RELEASE_ITEM ${OS_RELEASE_ITEM})
-      if (${OS_RELEASE_ITEM} MATCHES "^[ ]*NAME[ ]*=[ ]*(.+)")
+      if (${OS_RELEASE_ITEM} MATCHES "^[ ]*ID[ ]*=[ ]*(.+)")
         string (REGEX REPLACE ".*=[ ]*(.+)" "\\1"
           RELEASE_ID_SHORT ${OS_RELEASE_ITEM})
       elseif (${OS_RELEASE_ITEM} MATCHES "^[ ]*VERSION_ID[ ]*=[ ]*([0-9]+)")
@@ -541,6 +500,7 @@ endif(LSB_RELEASE_EXECUTABLE)
 
 if (RELEASE_ID_SHORT)
   string(TOLOWER ${RELEASE_ID_SHORT} DISTRO_NAME)
+  string(REPLACE "\"" "" DISTRO_NAME ${DISTRO_NAME})
 endif (RELEASE_ID_SHORT)
 
 #
@@ -563,7 +523,10 @@ endif ()
 #
 # Build name of package file (e.g. passwordsafe-ubuntu18-1.08.1-BETA-amd64.deb)
 #
-set (CPACK_PACKAGE_FILE_NAME ${CPACK_PACKAGE_NAME}-${DISTRO_NAME}${DISTRO_MAJOR_VERSION}-${CPACK_PACKAGE_VERSION}-${CPACK_DEBIAN_PACKAGE_ARCHITECTURE})
+set (CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${DISTRO_NAME}${DISTRO_MAJOR_VERSION}-${CPACK_PACKAGE_VERSION}${PACKAGE_ARCHITECTURE}")
+
+# Post-build stuff: e.g., sign the package
+set(CPACK_POST_BUILD_SCRIPTS "${PROJECT_SOURCE_DIR}/CMakeModules/PostBuild.cmake")
 
 if (EXISTS "/etc/debian_version")
 ## we are on a debian based distro, but we can't make assumptions about which
@@ -595,16 +558,25 @@ if (${RELEASE_ID_SHORT} STREQUAL "Ubuntu")
   else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "18.0")
     set (LIBCURL "libcurl3 (>= 7.47.0)")
   endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "18.0")
+
   if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.0")
     set (LIBQRENCODE "libqrencode4 (>= 4.0.2-1)")
   else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.0")
     set (LIBQRENCODE "libqrencode3 (>= 3.4.4-1)")
   endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.0")
-  if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "20.0")
+
+  if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "23.04")
+    set (LIBWX  "libwxgtk3.2-1 (>= 3.2.0)")
+  elseif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "22.10")
+    set (LIBWX  "libwxgtk3.2-0 (>= 3.2.0)")
+   elseif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "22.04")
+    set (LIBWX  "libwxgtk3.0-gtk3-0v5 (>= 3.0.5)")
+  elseif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "20.0")
     set (LIBWX  "libwxgtk3.0-gtk3-0v5 (>= 3.0.4)")
-  else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "20.0")
+  else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "23.04")
     set (LIBWX  "libwxgtk3.0-0v5 (>= 3.0.0-2) | libwxgtk3.0-0 (>= 3.0.0-2)")
-  endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "20.0")
+  endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "23.04")
+
   string(REGEX REPLACE "([0-9]+)\\.([0-9]+)\\.[0-9]+" "\\1.\\2" XercesC_VER ${XercesC_VERSION})
   set (CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.11.1-0ubuntu7.2), ${LIBCURL}, libmagic1 (>= 1:5.25), libuuid1 (>= 2.17.2-0ubuntu1), ${LIBWX}, libxtst6 (>= 2:1.1.0-2), libxerces-c${XercesC_VER} (>= 3.1.0-1), libykpers-1-1 (>= 1.7.0-1), ${LIBQRENCODE}")
 endif (${RELEASE_ID_SHORT} STREQUAL "Ubuntu")
@@ -621,24 +593,35 @@ if ((${RELEASE_ID_SHORT} STREQUAL "Debian") OR (${RELEASE_ID_SHORT} STREQUAL "Ra
     set (LIBQRENCODE "libqrencode3 (>= 3.4.4-1+b2)")
   endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "10")
   set (CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.7-18lenny4), ${LIBCURL}, libmagic1 (>= 1:5.22), libuuid1 (>= 1.41.3-1),
-                                     libwxgtk3.0-0 (>= 3.0.0-2) | libwxgtk3.0-0v5 (>= 3.0.0-2) | libwxgtk3.0-gtk3-0v5 (>= 3.0.5.1),
+                                     libwxgtk3.0-0 (>= 3.0.0-2) | libwxgtk3.0-0v5 (>= 3.0.0-2) | 
+                                     libwxgtk3.0-gtk3-0v5 (>= 3.0.5.1) | libwxgtk3.2-1 (>= 3.2.2+dfsg-2),
                                      libxtst6 (>= 2:1.0.3-1), ${LIBXERCES}, libykpers-1-1 (>= 1.7.0-1), ${LIBQRENCODE}")
   set (CPACK_DEBIAN_PACKAGE_RECOMMENDS "xvkbd (>= 3.3-1+b1)")
 endif ((${RELEASE_ID_SHORT} STREQUAL "Debian") OR (${RELEASE_ID_SHORT} STREQUAL "Raspbian"))
 
 if ((${RELEASE_ID_SHORT} STREQUAL "LinuxMint") OR (${RELEASE_ID_SHORT} STREQUAL "Linuxmint"))
   ## LinuxMint-specific:
-  if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.1")
+  if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "22")
+  set (LIBCURL "libcurl4 (>= 7.58.0)")
+  set (LIBXERCES "libxerces-c3.2 (>= 3.1.0-1)")
+  set (LIBQRENCODE "libqrencode4 (>= 4.0.2-1)")
+  set (LIBWX  "libwxgtk3.2-1 (>= 3.0.4)")
+  elseif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS_EQUAL "19.3")
     set (LIBCURL "libcurl4 (>= 7.58.0)")
     set (LIBXERCES "libxerces-c3.2 (>= 3.1.0-1)")
     set (LIBQRENCODE "libqrencode4 (>= 4.0.2-1)")
+    set (LIBWX  "libwxgtk3.0-gtk3-0v5 (>= 3.0.4)")
+  elseif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.1")
+    set (LIBCURL "libcurl4 (>= 7.58.0)")
+    set (LIBXERCES "libxerces-c3.2 (>= 3.1.0-1)")
+    set (LIBQRENCODE "libqrencode3 (>= 3.4.4-1)")
     set (LIBWX  "libwxgtk3.0-gtk3-0v5 (>= 3.0.4)")
   else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.1")
     set (LIBCURL "libcurl3 (>= 7.47.0)")
     set (LIBXERCES "libxerces-c3.1 (>= 3.1.3+debian-1)")
     set (LIBQRENCODE "libqrencode3 (>= 3.4.4)")
     set (LIBWX  "libwxgtk3.0-0v5 (>= 3.0.0-2) | libwxgtk3.0-0 (>= 3.0.0-2)")
-  endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "19.1")
+  endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "22")
   set (CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.11.1-0ubuntu7.2), ${LIBCURL}, libmagic1 (>= 1:5.25), libuuid1 (>= 2.17.2-0ubuntu1), ${LIBWX}, libxtst6 (>= 2:1.1.0-2), ${LIBXERCES}, libykpers-1-1 (>= 1.7.0), ${LIBQRENCODE}")
 endif ((${RELEASE_ID_SHORT} STREQUAL "LinuxMint") OR (${RELEASE_ID_SHORT} STREQUAL "Linuxmint"))
 
@@ -649,7 +632,27 @@ set (CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
 endif (EXISTS "/etc/debian_version")
 
 ## RPM-specific
-set (CPACK_RPM_PACKAGE_REQUIRES "wxBase3, wxGTK3, xerces-c, ykpers, qrencode-libs, file-libs")
+if (RELEASE_ID_SHORT)
+    if (${RELEASE_ID_SHORT} STREQUAL "openSUSE")
+    ## openSUSE-specific
+        set (RPM_PACKAGES "xerces-c, ykpers, qrencode, libjpeg8, libjpeg62, libmagic1, \
+                         libwx_baseu-suse3_0_5, libwx_baseu_net-suse3_0_5, \
+                         libwx_gtk2u_aui-suse3_0_5, libwx_gtk2u_core-suse3_0_5, \
+                         libwx_gtk2u_html-suse3_0_5, wxWidgets-lang")
+    elseif (${RELEASE_ID_SHORT} STREQUAL "fedora")
+    ## Fedora-specific
+      if (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "39")
+        set (LIBWXBASE "wxBase")
+        set (LIBWXGTK "wxGTK")
+      else (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "39")
+        set (LIBWXBASE "wxBase3")
+        set (LIBWXGTK "wxGTK3")
+      endif (NOT ${RELEASE_NUM_SHORT} VERSION_LESS "39")
+      set (RPM_PACKAGES "${LIBWXBASE}, ${LIBWXGTK}, xerces-c, ykpers, qrencode-libs, file-libs")
+    endif (${RELEASE_ID_SHORT} STREQUAL "openSUSE")
+endif (RELEASE_ID_SHORT)
+
+set (CPACK_RPM_PACKAGE_REQUIRES "${RPM_PACKAGES}")
 set (CPACK_RPM_PACKAGE_SUGGESTS "xvkbd")
 set (CPACK_RPM_PACKAGE_URL "https://pwsafe.org/")
 set (CPACK_RPM_PACKAGE_LICENSE "Artistic2.0")

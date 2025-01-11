@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -301,8 +301,8 @@ static void h_func(const unsigned char *in, unsigned char *out, unsigned char *M
 #endif
 
 /* the G function */
-#define g_func(x, dum)  (S1[byte(x,0)] ^ S2[byte(x,1)] ^ S3[byte(x,2)] ^ S4[byte(x,3)])
-#define g1_func(x, dum) (S2[byte(x,0)] ^ S3[byte(x,1)] ^ S4[byte(x,2)] ^ S1[byte(x,3)])
+#define g_func(x, dum)  (S1[byteN(x,0)] ^ S2[byteN(x,1)] ^ S3[byteN(x,2)] ^ S4[byteN(x,3)])
+#define g1_func(x, dum) (S2[byteN(x,0)] ^ S3[byteN(x,1)] ^ S4[byteN(x,2)] ^ S1[byteN(x,3)])
 
 #else
 

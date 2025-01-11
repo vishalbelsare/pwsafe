@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -57,13 +57,14 @@ int CPasskeyEntry::dialog_lookup[5] = {
 
 //-----------------------------------------------------------------------------
 CPasskeyEntry::CPasskeyEntry(CWnd* pParent, const CString& a_filespec, int index,
-  bool bReadOnly, bool bFileReadOnly, bool bForceReadOnly, bool bHideReadOnly)
+  bool bReadOnly, bool bFileReadOnly, bool bForceReadOnly, bool bHideReadOnly, bool bIsAppWindow)
   : CPKBaseDlg(dialog_lookup[index], pParent),
   m_btnReadOnly((bReadOnly || bFileReadOnly) ? TRUE : FALSE),
-  m_btnShowCombination(FALSE),
+  m_btnShowMasterPassword(FALSE),
   m_bFileReadOnly(bFileReadOnly),
   m_bForceReadOnly(bForceReadOnly),
   m_bHideReadOnly(bHideReadOnly),
+  m_bIsAppWindow(bIsAppWindow),
   m_filespec(a_filespec), m_orig_filespec(a_filespec),
   m_tries(0), m_status(TAR_INVALID),
   m_yubi_sk(nullptr)
@@ -111,7 +112,7 @@ void CPasskeyEntry::DoDataExchange(CDataExchange* pDX)
   DDX_Text(pDX, IDC_SELECTED_DATABASE, m_SelectedDatabase);
 
   DDX_Check(pDX, IDC_READONLY, m_btnReadOnly);
-  DDX_Check(pDX, IDC_SHOWCOMBINATION, m_btnShowCombination);
+  DDX_Check(pDX, IDC_SHOWMASTERPASSWORD, m_btnShowMasterPassword);
   DDX_Control(pDX, IDOK, m_ctlOK);
   //}}AFX_DATA_MAP
 }
@@ -126,7 +127,7 @@ BEGIN_MESSAGE_MAP(CPasskeyEntry, CPKBaseDlg)
   ON_BN_CLICKED(IDC_EXIT, OnExit)
   ON_BN_CLICKED(IDC_YUBIKEY_BTN, OnYubikeyBtn)
   ON_BN_CLICKED(IDC_READONLY, OnBnClickedReadonly)
-  ON_BN_CLICKED(IDC_SHOWCOMBINATION, OnShowCombination)
+  ON_BN_CLICKED(IDC_SHOWMASTERPASSWORD, OnShowMasterPassword)
   ON_BN_CLICKED(IDC_BTN_BROWSE, OnOpenFileBrowser)
   ON_STN_CLICKED(IDC_VKB, OnVirtualKeyboard)
 
@@ -160,6 +161,18 @@ BOOL CPasskeyEntry::OnInitDialog(void)
   GetDlgItem(IDC_READONLY)->EnableWindow((m_bForceReadOnly || m_bFileReadOnly || m_bHideReadOnly) ?
                                          FALSE : TRUE);
   GetDlgItem(IDC_READONLY)->ShowWindow(m_bHideReadOnly ? SW_HIDE : SW_SHOW);
+  
+  // If read-only box is hidden, move Show Master Password box in its place to close the gap.
+  if (m_bHideReadOnly) {
+    CRect rectReadOnly;
+    GetDlgItem(IDC_READONLY)->GetWindowRect(&rectReadOnly);
+    ScreenToClient(&rectReadOnly);
+    CRect rectMasterPassword;
+    GetDlgItem(IDC_SHOWMASTERPASSWORD)->GetWindowRect(&rectMasterPassword);
+    ScreenToClient(&rectMasterPassword);
+    rectMasterPassword.MoveToY(rectReadOnly.top);
+    GetDlgItem(IDC_SHOWMASTERPASSWORD)->MoveWindow(&rectMasterPassword);
+  }
 
   CWnd *create_bn = GetDlgItem(IDC_CREATE_DB);
   if (create_bn) // not always there
@@ -233,9 +246,23 @@ BOOL CPasskeyEntry::OnInitDialog(void)
   SetIcon(m_hIcon, TRUE);  // Set big icon
   SetIcon(m_hIcon, FALSE); // Set small icon
 
+  const CWnd* pInsertAfter = &CWnd::wndTopMost;
+
+  if (m_bIsAppWindow) {
+    // When the password entry dialog acts as a taskbar app window,
+    // it is initialized upon DB lock, where it should start minimized.
+    // The user will restore the minimized password entry dialog when
+    // they are ready, usually through ALT-TAB task switching, or
+    // clicking the pwsafe icon on the desktop taskbar.
+    ShowWindow(SW_MINIMIZE);
+
+    // When acting as an app window, the password entry dialog is not
+    // not wndTopMost but simply wndTop.
+    pInsertAfter = &CWnd::wndTop;
+  }
+
   // Following brings to top when hotkey pressed.
-  // This is "stronger" than BringWindowToTop().
-  SetWindowPos(&CWnd::wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  SetWindowPos(pInsertAfter, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
   SetActiveWindow();
   SetForegroundWindow();
 
@@ -245,13 +272,6 @@ BOOL CPasskeyEntry::OnInitDialog(void)
     // Ensures focus is on password entry field, where it belongs.
     GotoDlgCtrl(m_pctlPasskey);
     return FALSE;
-  }
-
-  // Following works fine for other (non-hotkey) cases:
-  if (m_index == GCP_RESTORE || m_index == GCP_WITHEXIT) {
-    SetWindowPos(&CWnd::wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    SetActiveWindow();
-    SetForegroundWindow();
   }
 
   // If the dbase field's !empty, the user most likely will want to enter
@@ -305,13 +325,6 @@ void CPasskeyEntry::OnCreateDb()
 
     rc = fd.DoModal();
 
-    if (((DboxMain*)GetParent())->ExitRequested()) {
-      // If U3ExitNow called while in CPWFileDialog,
-      // PostQuitMessage makes us return here instead
-      // of exiting the app. Try resignalling
-      PostQuitMessage(0);
-      return;
-    }
     if (rc == IDOK) {
       newfile = fd.GetPathName();
       break;
@@ -339,6 +352,15 @@ void CPasskeyEntry::OnCreateDb()
 
 void CPasskeyEntry::OnCancel()
 {
+  if (m_bIsAppWindow) {
+    // When the password entry dialog acts as the pwsafe taskbar app window,
+    // it is not canceled (destroyed) in the traditional manner, but simply
+    // re-minimized instead. The dialog box lives until either successful
+    // password entry or clicking Exit.
+    ShowWindow(SW_MINIMIZE);
+    return;
+  }
+
   m_status = TAR_CANCEL;
   CPWDialog::OnCancel();
 }
@@ -476,13 +498,13 @@ void CPasskeyEntry::OnBnClickedReadonly()
     create_bn->EnableWindow(!m_btnReadOnly);
 }
 
-void CPasskeyEntry::OnShowCombination()
+void CPasskeyEntry::OnShowMasterPassword()
 {
   UpdateData(TRUE);
 
-  m_pctlPasskey->SetSecure(m_btnShowCombination == TRUE ? FALSE : TRUE);
+  m_pctlPasskey->SetSecure(m_btnShowMasterPassword == TRUE ? FALSE : TRUE);
 
-  if (m_btnShowCombination == TRUE) {
+  if (m_btnShowMasterPassword == TRUE) {
     m_pctlPasskey->SetPasswordChar(0);
     m_pctlPasskey->SetWindowText(m_passkey);
   } else {
@@ -551,13 +573,6 @@ void CPasskeyEntry::OnOpenFileBrowser()
 
   INT_PTR rc = fd.DoModal();
 
-  if (((DboxMain*)GetParent())->ExitRequested()) {
-    // If U3ExitNow called while in CPWFileDialog,
-    // PostQuitMessage makes us return here instead
-    // of exiting the app. Try resignalling
-    PostQuitMessage(0);
-    return;
-  }
   if (rc == IDOK) {
     if (!pws_os::IsWindowsVistaOrGreater()) {
       // Read-only checkbox only available up to Windows XP

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -32,9 +32,7 @@ public:
   void Reset();
 
   CString GetButtonString() const;
-  int GetBrowseURLImageIndex() const {return m_iBrowseURL_BM_offset;}
-  int GetSendEmailImageIndex() {return m_iSendEmail_BM_offset;}
-  void MapControlIDtoImage(ID2ImageMap &IDtoImages);
+  static void MapControlIDtoImage(ID2ImageMap &IDtoImages);
   void RefreshImages();
 
 protected:
@@ -90,7 +88,6 @@ private:
   int m_iNum_Bitmaps, m_iNumDefaultButtons, m_NumBits;
   int m_toolbarMode, m_bitmode;
   bool m_bIsDefault;
-  int m_iBrowseURL_BM_offset, m_iSendEmail_BM_offset;
 };
 
 /**

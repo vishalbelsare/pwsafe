@@ -1,133 +1,96 @@
-This note describes the new features, fixed bugs and known problems
-with the latest versions of Password Safe. For a short description of
-Password Safe, please see the accompanying README.md file. For more
-information on the product and the project, please visit
-https://pwsafe.org/. Details about changes to older
-releases may be found in the file ChangeLog.txt.
+This note describes the new features, fixed bugs and known problems with the latest versions of Password Safe. For a short description of
+Password Safe, please see the accompanying README.md file. For more information on the product and the project, please visit
+https://pwsafe.org/. Details about changes to older releases may be found in the file ChangeLog.txt.
 
 In the following, SFxxxx refers to Bug Reports, Feature Requests and Service Requests in PasswordSafe SourceForge Project tickets, and GHxxxx refers to issues in the PasswordSafe GitHub project.
 
-PasswordSafe 3.58.0pre Release Dec 2021
+PasswordSafe 3.67.1pre Release ???
+==================================
+
+Bugs Fixed in 3.67.1pre
+-----------------------
+* [GH1408](https://github.com/pwsafe/pwsafe/issues/1408) Time fields (such as password modification time) are now copied over correctly in sync operations between databases.
+
+PasswordSafe 3.67.0 Release Oct 20 2024
 =======================================
 
-Bugs fixed in 3.58.0pre
------------------------
-* [BR1550](https://sourceforge.net/p/passwordsafe/bugs/1550/) Autotype delay now applies to key codes (e.g., &bsol;{Down}) as well as "regular" text.
-* [BR1549](https://sourceforge.net/p/passwordsafe/bugs/1549/) '-g' command line option now handles UNC path correctly
-* [GH800](https://github.com/pwsafe/pwsafe/issues/800) PasswordSafe now prevents data that it places on the clipboard from appearing in the Windows Clipboard History.
+Bugs Fixed in 3.67.0
+----------------------
+* [GH1390](https://github.com/pwsafe/pwsafe/issues/1390), [SF1602](https://sourceforge.net/p/passwordsafe/bugs/1602/) Fixed regression, an entry's password history list now responds to mouse clicks.
+* [GH1371](https://github.com/pwsafe/pwsafe/issues/1371) Fixed regresssion, recently used files are now remembered correctly.
+* [GH1351](https://github.com/pwsafe/pwsafe/issues/1351) Fixed crash in pwsafe-cli when exporting database with named policy to XML.
 
-Changes in 3.58.0pre
---------------------
-* [FR894](https://sourceforge.net/p/passwordsafe/feature-requests/894/) Add support for GoTrust Idem Key 2FA
+New features in 3.67.0
+----------------------
+* [GH1301](https://github.com/pwsafe/pwsafe/issues/1301), [SF918](https://sourceforge.net/p/passwordsafe/feature-requests/918/) TOTP authorization code can be used in autotype via '\2'
+* [SF921](https://sourceforge.net/p/passwordsafe/feature-requests/921/) Ctrl-Backspace now clears password fields, both for entries and master passwords.
+* [SF912](https://sourceforge.net/p/passwordsafe/feature-requests/912/) If a view filter is active when a database is closed, it will be activated the next time the database is opened.
 
-New features in 3.58.0pre
--------------------------
-* [GH785] (https://github.com/pwsafe/pwsafe/issues/785) Added "Open Another" menu item in the system tray popup menu, allowing easy switching to a new PasswordSafe database.
 
-PasswordSafe 3.57 Release October 2021
+PasswordSafe 3.66.1 Release Jun 4 2024
 ======================================
-* [SF1547](https://sourceforge.net/p/passwordsafe/bugs/1547/) No longer crashes when incremental backup 999 reached.
-* [SF896](https://sourceforge.net/p/passwordsafe/feature-requests/896/) Added \e to ESC mapping in autotype.
-* [SF1544](https://sourceforge.net/p/passwordsafe/bugs/1544/) Fixed regression in German installer texts.
-* [SF1539](https://sourceforge.net/p/passwordsafe/bugs/1539/) Workaround touchscreen issue with Manage->Options tabs.
 
+Bugs fixed in 3.66.1
+--------------------
 
-PasswordSafe non-Windows Release 1.14
-=====================================
-* [SF1543](https://sourceforge.net/p/passwordsafe/bugs/1543/) Fixed crash when importing XML with empty password in password history
+* [SF1599](https://sourceforge.net/p/passwordsafe/bugs/1599/) Do not crash if pwsafe.cfg is missing (regression).
+* [SF1597](https://sourceforge.net/p/passwordsafe/bugs/1597/) Group control no longer appears focused (green background) in initial Add/Edit window.
+* [GH1282](https://github.com/pwsafe/pwsafe/issues/1282) Autotype now handles backslashes correctly in all field values, not only password.
 
+PasswordSafe 3.66.0 Release May 27 2024
+=======================================
+Bugs fixed in 3.66.0
+--------------------
 
-Password Safe 3.56 Release July 2021
+* [GH1272](https://github.com/pwsafe/pwsafe/issues/1272) "Remember last N databases" now works correctly with N set to zero.
+* [GH1203](https://github.com/pwsafe/pwsafe/issues/1203) The initial focus for new entries is now on the Title control, which is more useful.
+* Saving intermediate backups should no longer fail due to different security attributes.
+
+PasswordSafe 3.65.1 Release Feb 2024
 ====================================
 
-New features in 3.56
------------------------
-
-* [FR894](https://sourceforge.net/p/passwordsafe/feature-requests/894/) Support OnlyKey 2FA
-
-Bugs fixed in 3.56
-------------------
-* [SF1542](https://sourceforge.net/p/passwordsafe/bugs/1542) UNC paths now accepted as backup directory
-* [SF1530](https://sourceforge.net/p/passwordsafe/bugs/1530) Maximized window is now restored as such after unlock
-* [GH737](https://github.com/pwsafe/pwsafe/issues/737) Fixed crash in 64 bit version when selecting View -> Filters -> New/edit Filter -> Field DCA (or Shift-DCA) followed by Citeria selection
-* [GH573](https://github.com/pwsafe/pwsafe/issues/573),[SF1488](https://sourceforge.net/p/passwordsafe/bugs/1488/) "Remind" Windows when PasswordSafe should stay topmost
-* Fixed Notes line parsing in Run command
-
-Changes in 3.56
-------------------
-
-* Entire password can be selected in password subset display by specifying '*'
-* Arabic support added
-
-PasswordSafe non-Windows Release 1.13
-=====================================
-
-Bugs fixed in 1.13
-------------------
-
-* [GH718](https://github.com/pwsafe/pwsafe/issues/718) Clear YubiSK when Yubi protection is removed.
-* [SF1536](https://sourceforge.net/p/passwordsafe/bugs/1536/) pwsafe-cli now accepts master passphrases with spaces.
-
-Password Safe 3.55 Release January 2021
-=======================================
-
-New features in 3.55
+Bugs fixed in 3.65.1
 --------------------
 
-* Replace the tabs in Manage->Options dialog with a more modern interface.
-* [SF892](https://sourceforge.net/p/passwordsafe/feature-requests/892/) Added tooltip to copy password button in Add/Edit and Password Policy windows.
-* [SF525](https://sourceforge.net/p/passwordsafe/support-requests/525/) Removed limitation on encrypting/decrypting files larger than 2GB.
+* [SF551](https://sourceforge.net/p/passwordsafe/support-requests/551/) Document the fact that Screen Capture Protection isn't available before Windows 10 Version 2004, as well as the admin registry key used to disable it.
+* [GH1092](https://github.com/pwsafe/pwsafe/issues/1092) Size and position of main window is now restored correctly on displays with scale > 100%.
 
-Bugs fixed in 3.54.01
----------------------
+Bugs fixed in 3.65.0
+--------------------
 
-* [GH696](https://github.com/pwsafe/pwsafe/issues/696),[SF1526](https://sourceforge.net/p/passwordsafe/bugs/1526) Regression: Works again under Windows 7 and 8.
-* [SF1519](https://sourceforge.net/p/passwordsafe/bugs/1519) Fixed false change detection due to different line endings.
+* Modality of dialog windows is now preserved across lock/unlock.
+* [GH1066](https://github.com/pwsafe/pwsafe/issues/1066) Signature verification no longer triggers network traffic.
 
-Bugs fixed in 3.54
-------------------
 
-* [SF1524](https://sourceforge.net/p/passwordsafe/bugs/1524) Added missing "Show Combination" checkbox to Export Dialogs.
-* [SF1523](https://sourceforge.net/p/passwordsafe/bugs/1523) PasswordSafe now displays correctly on high DPI monitors.
-* [SF1521](https://sourceforge.net/p/passwordsafe/bugs/1521) In Add/Edit entry's Policy tab, allow lengths to be set when easy vision is selected.
-* [SF1519](https://sourceforge.net/p/passwordsafe/bugs/1519) Fixed false change detection when an entry's notes field has > 1 line
-* [SF1517](https://sourceforge.net/p/passwordsafe/bugs/1517) Maximized PasswordSafe window is now restored as such.
+New features in 3.65.0
+----------------------
+* [GH1075](https://github.com/pwsafe/pwsafe/issues/1075) PasswordSafe can now generate authentication tokens (one time password codes) for entries for site that require those for stronger security.
 
-Password Safe 3.53 Release September 2020
-=========================================
 
-Bugs Fixed in 3.53
-------------------
+PasswordSafe 3.64.1 Release Nov 2023
+====================================
 
-* [SF1518](https://sourceforge.net/p/passwordsafe/bugs/1518) Fixed rare crash after dragging item outside of PasswordSafe.
-* [SF1504](https://sourceforge.net/p/passwordsafe/bugs/1504/) Fixed regression: lock file is now deleted upon exit.
-* [SF1030](https://sourceforge.net/p/passwordsafe/bugs/1030) Incremental search in list view no longer messes up selection.
+Bugs fixed in 3.64.1
+--------------------
 
-Changes in 3.53
----------------
+* Support control of screen capture protection feature at installation time, via checkbox in exe installer, SCREENCAPTUREPROTECTION=False option via msiexec.
+* [GH1041](https://github.com/pwsafe/pwsafe/issues/1041) PasswordSafe now verifies the signature when loading an app-specific dll.
 
-* This is the first release built with Visual Studio 2019 Community Edition and CMake.
 
-PasswordSafe non-Windows release 1.11
+PasswordSafe 3.64.0 Release Sept 2023
 =====================================
 
-* Fix an issue with the width of spinbox controls in several versions of GTK3 which causes
-  spinbox controls to be displayed incorrectly - too wide or too narrow.
-  In addition to some heuristics based on the distribution type and version, we allow
-  the user control of the width of the spinbox via the PWS_FIX_GTK_SPINBOX environment variable as follows:
-  * 0 - This is the same as not setting the environment variable, i.e., let PasswordSafe try to determine the correct width
-  * 1 - This lets wx set the width to wxDefaultSize, which may be way too wide for some versions of GTK
-  * 2..10 - This sets the width to display this many characters in the text entry field of the spinner.
+Bugs fixed in 3.64.0
+--------------------
 
-Password Safe 3.52 Release April 2020
-=====================================
+* [GH1025](https://github.com/pwsafe/pwsafe/issues/1025) PasswordSafe database-specific options now reset to default when a database is closed.
+* [SF1577](https://sourceforge.net/p/passwordsafe/bugs/1577/) Changes to font preferences are now saved immediately.
+* [GH1021](https://github.com/pwsafe/pwsafe/issues/1021) Invalid values in System Option no longer trigger double error messages and crash.
+* [GH1014](https://github.com/pwsafe/pwsafe/issues/1014) Focus is now set correctly after unlock when not using system tray.
+* [GH1005](https://github.com/pwsafe/pwsafe/issues/1005) Backslash in passwords are now passed as-is in autotype.
 
-Bugs Fixed in 3.52
-------------------
+New features in 3.64.0
+----------------------
+* [GH1022](https://github.com/pwsafe/pwsafe/issues/1022) By default, PasswordSafe windows no longer appear in Windows screen captures. This is user-configurable, see online help for details.
+* [SF909](https://sourceforge.net/p/passwordsafe/feature-requests/909/) Search (Find) bar visibility is now persistent.
 
-* [SF1510](https://sourceforge.net/p/passwordsafe/bugs/1510) Fixed truncated text in delete confirmation window.
-* [SF1509](https://sourceforge.net/p/passwordsafe/bugs/1509) Cancelling a delete now leaves the selection unchanged.
-* [GH634](https://github.com/pwsafe/pwsafe/issues/634),[SF1508](https://sourceforge.net/p/passwordsafe/bugs/1508) Clearing an entry's username no longer causes a revert to default.
-* [SF1505](https://sourceforge.net/p/passwordsafe/bugs/1505) No longer crashes when trying to view or copy a shortcut from the "compare databases" results.
-* [SF1503](https://sourceforge.net/p/passwordsafe/bugs/1503),[SF1512](https://sourceforge.net/p/passwordsafe/bugs/1512) Recurring password expiration update fixed ([1497](https://sourceforge.net/p/passwordsafe/bugs/1497) redo).
-* [SF1495](https://sourceforge.net/p/passwordsafe/bugs/1495) Accepts policy name via Enter as well as click on OK.

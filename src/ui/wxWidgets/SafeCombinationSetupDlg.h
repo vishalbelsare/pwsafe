@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -50,7 +50,7 @@ class wxTimer;
 #endif
 #define ID_YUBIBTN 10229
 #define ID_YUBISTATUS 10230
-#define SYMBOL_SAFECOMBINATIONSETUPDLG_TITLE _("Safe Combination Setup")
+#define SYMBOL_SAFECOMBINATIONSETUPDLG_TITLE _("Set Master Password")
 #define SYMBOL_SAFECOMBINATIONSETUPDLG_IDNAME ID_SAFECOMBINATIONSETUPDLG
 #define SYMBOL_SAFECOMBINATIONSETUPDLG_SIZE wxSize(400, 300)
 #define SYMBOL_SAFECOMBINATIONSETUPDLG_POSITION wxDefaultPosition
@@ -70,23 +70,18 @@ class SafeCombinationSetupDlg : public wxDialog
   DECLARE_EVENT_TABLE()
 
 public:
-  /// Constructors
-  SafeCombinationSetupDlg();
-  SafeCombinationSetupDlg( wxWindow* parent, wxWindowID id = SYMBOL_SAFECOMBINATIONSETUPDLG_IDNAME, const wxString& caption = SYMBOL_SAFECOMBINATIONSETUPDLG_TITLE, const wxPoint& pos = SYMBOL_SAFECOMBINATIONSETUPDLG_POSITION, const wxSize& size = SYMBOL_SAFECOMBINATIONSETUPDLG_SIZE, long style = SYMBOL_SAFECOMBINATIONSETUPDLG_STYLE );
-
-  /// Creation
-  bool Create( wxWindow* parent, wxWindowID id = SYMBOL_SAFECOMBINATIONSETUPDLG_IDNAME, const wxString& caption = SYMBOL_SAFECOMBINATIONSETUPDLG_TITLE, const wxPoint& pos = SYMBOL_SAFECOMBINATIONSETUPDLG_POSITION, const wxSize& size = SYMBOL_SAFECOMBINATIONSETUPDLG_SIZE, long style = SYMBOL_SAFECOMBINATIONSETUPDLG_STYLE );
+  static SafeCombinationSetupDlg* Create(wxWindow *parent, wxWindowID id = SYMBOL_SAFECOMBINATIONSETUPDLG_IDNAME, const wxString& caption = SYMBOL_SAFECOMBINATIONSETUPDLG_TITLE, const wxPoint& pos = SYMBOL_SAFECOMBINATIONSETUPDLG_POSITION, const wxSize& size = SYMBOL_SAFECOMBINATIONSETUPDLG_SIZE, long style = SYMBOL_SAFECOMBINATIONSETUPDLG_STYLE );
 
   /// Destructor
   ~SafeCombinationSetupDlg();
-
-  /// Initialises member variables
-  void Init();
+  StringX GetPassword() const {return m_password;}
+protected:
+  /// Constructors
+  SafeCombinationSetupDlg(wxWindow *parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style);
+  SafeCombinationSetupDlg() = default;
 
   /// Creates the controls and sizers
   void CreateControls();
-
-  wxString GetPassword() const {return m_password;}
 
   ////@begin SafeCombinationSetupDlg event handler declarations
 
@@ -116,17 +111,15 @@ public:
 
 ////@begin SafeCombinationSetupDlg member variables
 #ifndef NO_YUBI
-  wxBitmapButton* m_YubiBtn;
-  wxStaticText* m_yubiStatusCtrl;
+  wxBitmapButton* m_YubiBtn = nullptr;
+  wxStaticText* m_yubiStatusCtrl = nullptr;
 #endif
 ////@end SafeCombinationSetupDlg member variables
  private:
-
-#ifndef NO_YUBI
-  wxTimer* m_pollingTimer; // for Yubi, but can't go into mixin :-(
-#endif
-  wxString m_password;
-  wxString m_verify;
+  SafeCombinationCtrl* m_PasswordEntryCtrl = nullptr;
+  SafeCombinationCtrl* m_VerifyEntryCtrl = nullptr;
+  StringX m_password;
+  StringX m_verify;
 };
 
 #endif // _SAFECOMBINATIONSETUPDLG_H_

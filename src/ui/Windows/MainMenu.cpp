@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -354,17 +354,15 @@ void DboxMain::SetUpInitialMenuStrings()
   std::vector<st_prefShortcut> vShortcuts(PWSprefs::GetInstance()->GetPrefShortcuts());
 
   for (auto &stxst : vShortcuts) {
-    // User should not have these sub-entries in their config file
-    if (stxst.id == ID_MENUITEM_GROUPENTER  ||
-        stxst.id == ID_MENUITEM_VIEWENTRY   ||
-        stxst.id == ID_MENUITEM_DELETEENTRY ||
-        stxst.id == ID_MENUITEM_DELETEGROUP ||
-        stxst.id == ID_MENUITEM_RENAME      ||
-        stxst.id == ID_MENUITEM_RENAMEENTRY ||
-        stxst.id == ID_MENUITEM_RENAMEGROUP) {
+  // User should not have these in their config file
+  // See SetUpInitialMenuStrings() for rationale
+
+    if (std::find(m_ExcludedMenuItems.begin(), m_ExcludedMenuItems.end(), iter->first) != m_ExcludedMenuItems.end())
+    { // yes, I know this is O(m * n).
+      ASSERT(0); // to debug why this happens
       continue;
     }
-
+ 
     iter = m_MapMenuShortcuts.find(stxst.id);
     if (iter == m_MapMenuShortcuts.end()) {
       // Unknown Control ID - ignore - maybe used by a later version of PWS
@@ -878,14 +876,21 @@ void DboxMain::CustomiseMenu(CMenu *pPopupMenu, const UINT uiMenuID,
       pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
                              ID_MENUITEM_CLEARCLIPBOARD, tc_dummy);
       pPopupMenu->InsertMenu((UINT)-1, MF_SEPARATOR);
+      if (!pci->IsFieldValueEmpty(CItemData::USER, pbci))
+        pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
+          ID_MENUITEM_COPYUSERNAME, tc_dummy);
+
       pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
                              ID_MENUITEM_COPYPASSWORD, tc_dummy);
       pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
                              ID_MENUITEM_PASSWORDSUBSET, tc_dummy);
 
-      if (!pci->IsFieldValueEmpty(CItemData::USER, pbci))
+      if (!pci->IsFieldValueEmpty(CItemData::TWOFACTORKEY, pbci)) {
         pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
-                               ID_MENUITEM_COPYUSERNAME, tc_dummy);
+                               ID_MENUITEM_COPY2FAAUTHCODE, tc_dummy);
+        pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
+                               ID_MENUITEM_VIEW2FAAUTHCODE, tc_dummy);
+      }
 
       if (!pci->IsFieldValueEmpty(CItemData::NOTES, pbci))
         pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
@@ -922,10 +927,13 @@ void DboxMain::CustomiseMenu(CMenu *pPopupMenu, const UINT uiMenuID,
 
       // Add actions in order
       if (bAddURL && !pci->IsURLEmail(pbci)) {
-        pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
-                               ID_MENUITEM_BROWSEURL, tc_dummy);
-        pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING,
-                               ID_MENUITEM_BROWSEURLPLUS, tc_dummy);
+        bool altDefined = pci->GetURL().find(L"[alt]") != StringX::npos;
+        if (!altDefined) {
+          pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING, ID_MENUITEM_BROWSEURL, tc_dummy);
+          pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING, ID_MENUITEM_BROWSEURLPLUS, tc_dummy);
+        }
+        pPopupMenu->AppendMenu(MF_ENABLED | MF_STRING, ID_MENUITEM_BROWSEURLALT, tc_dummy);
+
       }
 
       if (bAddSendEmail) {
@@ -1573,6 +1581,11 @@ void DboxMain::OnContextMenu(CWnd * /* pWnd */, CPoint screen)
     if (pci->IsFieldValueEmpty(CItemData::USER, pbci))
       pPopup->RemoveMenu(ID_MENUITEM_COPYUSERNAME, MF_BYCOMMAND);
 
+    if (pci->IsFieldValueEmpty(CItemData::TWOFACTORKEY, pbci)) {
+      pPopup->RemoveMenu(ID_MENUITEM_COPY2FAAUTHCODE, MF_BYCOMMAND);
+      pPopup->RemoveMenu(ID_MENUITEM_VIEW2FAAUTHCODE, MF_BYCOMMAND);
+    }
+
     if (pci->IsFieldValueEmpty(CItemData::NOTES, pbci))
       pPopup->RemoveMenu(ID_MENUITEM_COPYNOTESFLD, MF_BYCOMMAND);
 
@@ -1587,6 +1600,7 @@ void DboxMain::OnContextMenu(CWnd * /* pWnd */, CPoint screen)
 
     if (!bUseURL) {
       pPopup->RemoveMenu(ID_MENUITEM_BROWSEURL, MF_BYCOMMAND);
+      pPopup->RemoveMenu(ID_MENUITEM_BROWSEURLALT, MF_BYCOMMAND);
       pPopup->RemoveMenu(ID_MENUITEM_BROWSEURLPLUS, MF_BYCOMMAND);
     }
 
@@ -1680,7 +1694,7 @@ void DboxMain::SetupSpecialShortcuts()
 
 void DboxMain::UpdateEditViewAccelerator(bool isRO)
 {
-  // If isRO, remove Ctrl-Enter from ID_MENUITEM_EDITENTRY, set to ID_MENUITEM_VIEWENTRY
+  // If isRO, remove shortcut from ID_MENUITEM_EDITENTRY, set to ID_MENUITEM_VIEWENTRY
   // else, vice-versa
   auto edit_iter = m_MapMenuShortcuts.find(ID_MENUITEM_EDITENTRY);
   ASSERT(edit_iter != m_MapMenuShortcuts.end());

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -28,11 +28,12 @@
 #include "ViewReportDlg.h"
 #include "wxUtilities.h"
 
-ViewReportDlg::ViewReportDlg(wxWindow* parent, CReport* pRpt, bool fromFile) :
+ViewReportDlg::ViewReportDlg(wxWindow *parent, CReport* pRpt, bool fromFile) :
                 wxDialog(parent, wxID_ANY, _("View Report"), wxDefaultPosition, wxDefaultSize,
                       wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER),  m_pRpt(pRpt)
 {
   wxASSERT(pRpt);
+  wxASSERT(!parent || parent->IsTopLevel());
 
   wxBoxSizer* dlgSizer = new wxBoxSizer(wxVERTICAL);
 
@@ -53,7 +54,7 @@ ViewReportDlg::ViewReportDlg(wxWindow* parent, CReport* pRpt, bool fromFile) :
   bs->AddSpacer(ColSeparation);
   bs->Add(new wxButton(this, wxID_COPY, _("&Copy to Clipboard")));
   bs->AddSpacer(ColSeparation);
-  wxButton* finishButton = new wxButton(this, wxID_CLOSE, _("&Finish"));
+  wxButton* finishButton = new wxButton(this, wxID_CLOSE);
   finishButton->SetDefault();
   bs->Add(finishButton);
 
@@ -69,8 +70,9 @@ ViewReportDlg::ViewReportDlg(wxWindow* parent, CReport* pRpt, bool fromFile) :
   SetSizerAndFit(dlgSizer);
 }
 
-ViewReportDlg::~ViewReportDlg()
+ViewReportDlg* ViewReportDlg::Create(wxWindow *parent, CReport* pRpt, bool fromFile)
 {
+  return new ViewReportDlg(parent, pRpt, fromFile);
 }
 
 void ViewReportDlg::OnSave(wxCommandEvent& evt)

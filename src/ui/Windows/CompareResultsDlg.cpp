@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -45,6 +45,7 @@ const UINT CCompareResultsDlg::FixedCols[CCompareResultsDlg::USER + 1] = {
 // These columns are optional and in this *preferred* order
 CCompareResultsDlg::OptionalColumns CCompareResultsDlg::OptCols[LAST - PASSWORD] = {
     {CItemData::PASSWORD,   IDS_PASSWORD},
+    {CItemData::TWOFACTORKEY, IDSC_FLDNMTWOFACTORKEY},
     {CItemData::NOTES,      IDS_NOTES},
     {CItemData::URL,        IDS_URL},
     {CItemData::AUTOTYPE,   IDS_AUTOTYPE},
@@ -571,25 +572,25 @@ st_CompareData * CCompareResultsDlg::GetCompareData(const LONG_PTR dwItemData,
   switch (iList) {
     case IDENTICAL:
       cd_iter = std::find_if(self->m_Identical.begin(), self->m_Identical.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+                             std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != self->m_Identical.end())
         retval = &*cd_iter;
       break;
     case BOTH:
       cd_iter = std::find_if(self->m_Conflicts.begin(), self->m_Conflicts.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != self->m_Conflicts.end())
         retval = &*cd_iter;
       break;
     case CURRENT:
       cd_iter = std::find_if(self->m_OnlyInCurrent.begin(), self->m_OnlyInCurrent.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != self->m_OnlyInCurrent.end())
         retval = &*cd_iter;
       break;
     case COMPARE:
       cd_iter = std::find_if(self->m_OnlyInComp.begin(), self->m_OnlyInComp.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != self->m_OnlyInComp.end())
         retval = &*cd_iter;
       break;
@@ -705,21 +706,21 @@ void CCompareResultsDlg::OnCompareCopyToOriginalDB()
     case BOTH:
       m_numConflicts--;
       cd_iter = std::find_if(m_Conflicts.begin(), m_Conflicts.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != m_Conflicts.end())
         m_Conflicts.erase(cd_iter);
       break;
     case CURRENT:
       m_numOnlyInCurrent--;
       cd_iter = std::find_if(m_OnlyInCurrent.begin(), m_OnlyInCurrent.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != m_OnlyInCurrent.end())
         m_OnlyInCurrent.erase(cd_iter);
       break;
     case COMPARE:
       m_numOnlyInComp--;
       cd_iter = std::find_if(m_OnlyInComp.begin(), m_OnlyInComp.end(),
-                             std::bind2nd(std::equal_to<int>(), id));
+        std::bind(std::equal_to<int>(), std::placeholders::_1, id));
       if (cd_iter != m_OnlyInComp.end())
         m_OnlyInComp.erase(cd_iter);
       break;
@@ -857,14 +858,14 @@ void CCompareResultsDlg::DoAllFunctions(const int ifunction)
         case BOTH:
           m_numConflicts--;
           cd_iter = std::find_if(m_Conflicts.begin(), m_Conflicts.end(),
-                                 std::bind2nd(std::equal_to<int>(), id));
+            std::bind(std::equal_to<int>(), std::placeholders::_1, id));
           if (cd_iter != m_Conflicts.end())
             m_Conflicts.erase(cd_iter);
           break;
         case COMPARE:
           m_numOnlyInComp--;
           cd_iter = std::find_if(m_OnlyInComp.begin(), m_OnlyInComp.end(),
-                                 std::bind2nd(std::equal_to<int>(), id));
+            std::bind(std::equal_to<int>(), std::placeholders::_1, id));
           if (cd_iter != m_OnlyInComp.end())
             m_OnlyInComp.erase(cd_iter);
           break;

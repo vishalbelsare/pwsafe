@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -144,25 +144,20 @@ const wxString DCAStrings[] = {
 /*!
  * OptionsPropertySheetDlg constructors
  */
-
-OptionsPropertySheetDlg::OptionsPropertySheetDlg(PWScore &core) : m_core(core)
-{
-  Init();
-}
-
-OptionsPropertySheetDlg::OptionsPropertySheetDlg( wxWindow* parent, PWScore &core, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
+OptionsPropertySheetDlg::OptionsPropertySheetDlg(wxWindow *parent, PWScore &core, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
   : m_core(core)
 {
-  Init();
-  Create(parent, id, caption, pos, size, style);
-}
+  const wxSize imageSize(64, 64);
 
-/*!
- * OptionsPropertySheetDlg creator
- */
+  m_ImageList = new wxImageList(imageSize.GetWidth(), imageSize.GetHeight());
+  m_ImageList->Add(wxIcon(backups_xpm));        // https://www.pngrepo.com/svg/224774/database
+  m_ImageList->Add(wxIcon(display_xpm));        // https://www.pngrepo.com/svg/131986/computer
+  m_ImageList->Add(wxIcon(miscellaneous_xpm));  // https://www.pngrepo.com/svg/230756/test
+  m_ImageList->Add(wxIcon(history_xpm));        // https://www.pngrepo.com/svg/95031/file
+  m_ImageList->Add(wxIcon(security_xpm));       // https://www.pngrepo.com/svg/219291/security-shield
+  m_ImageList->Add(wxIcon(shortcuts_xpm));      // https://www.pngrepo.com/svg/153991/keyboard
+  m_ImageList->Add(wxIcon(system_xpm));         // https://www.pngrepo.com/svg/230728/settings-gear
 
-bool OptionsPropertySheetDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
 ////@begin OptionsPropertySheetDlg creation
   SetSheetStyle(wxPROPSHEET_LISTBOOK);
   SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY|wxWS_EX_BLOCK_EVENTS);
@@ -176,7 +171,11 @@ bool OptionsPropertySheetDlg::Create( wxWindow* parent, wxWindowID id, const wxS
 ////@end OptionsPropertySheetDlg creation
   wxCommandEvent dummyEv;
   OnSuffixCBSet(dummyEv);
-  return true;
+}
+
+OptionsPropertySheetDlg* OptionsPropertySheetDlg::Create(wxWindow *parent, PWScore &core, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style)
+{
+  return new OptionsPropertySheetDlg(parent, core, id, caption, pos, size, style);
 }
 
 /*!
@@ -188,72 +187,6 @@ OptionsPropertySheetDlg::~OptionsPropertySheetDlg()
 ////@begin OptionsPropertySheetDlg destruction
 ////@end OptionsPropertySheetDlg destruction
   delete m_ImageList;
-}
-
-/*!
- * Member initialisation
- */
-
-void OptionsPropertySheetDlg::Init()
-{
-////@begin OptionsPropertySheetDlg member initialisation
-  m_Backups_Panel = nullptr;
-  m_Backups_DefaultPrefixRB = nullptr;
-  m_Backups_UserPrefixRB = nullptr;
-  m_Backups_UserPrefixTXT = nullptr;
-  m_Backups_SuffixCB = nullptr;
-  m_Backups_MaxIncrSB = nullptr;
-  m_Backups_SuffixExampleST = nullptr;
-  m_Backups_DefaultDirRB = nullptr;
-  m_Backups_UserDirRB = nullptr;
-  m_Backups_UserDirTXT = nullptr;
-  m_Backups_DirBN = nullptr;
-
-  m_Display_Panel = nullptr;
-  m_Display_ShowPasswordInTreeCB = nullptr;
-  m_Display_PreExpiryWarnCB = nullptr;
-  m_Display_PreExpiryWarnDaysSB = nullptr;
-
-  m_Misc_Panel = nullptr;
-  m_Misc_DoubleClickActionCB = nullptr;
-  m_Misc_ShiftDoubleClickActionCB = nullptr;
-  m_Misc_DefaultUsernameTXT = nullptr;
-  m_Misc_DefaultUsernameLBL = nullptr;
-
-  m_PasswordHistory_Panel = nullptr;
-  m_PasswordHistory_SaveCB = nullptr;
-  m_PasswordHistory_NumDefaultSB = nullptr;
-  m_PasswordHistory_DefaultExpiryDaysSB = nullptr;
-  m_PasswordHistory_ApplyBN = nullptr;
-  m_PasswordHistory_NoChangeRB = nullptr;
-  m_PasswordHistory_StopRB = nullptr;
-  m_PasswordHistory_StartRB = nullptr;
-  m_PasswordHistory_SetMaxRB = nullptr;
-  m_PasswordHistory_ClearRB = nullptr;
-  m_PasswordHistory_Apply2ProtectedCB = nullptr;
-
-  m_Security_Panel = nullptr;
-  m_Security_LockOnIdleTimeoutCB = nullptr;
-  m_Security_IdleTimeoutSB = nullptr;
-
-  m_Shortcuts_Panel = nullptr;
-
-  m_System_Panel = nullptr;
-  m_System_UseSystemTrayCB = nullptr;
-  m_System_MaxREItemsSB = nullptr;
-  m_System_SystemTrayWarningST = nullptr;
-////@end OptionsPropertySheetDlg member initialisation
-
-  const wxSize imageSize(64, 64);
-
-  m_ImageList = new wxImageList(imageSize.GetWidth(), imageSize.GetHeight());
-  m_ImageList->Add(wxIcon(backups_xpm));        // https://www.pngrepo.com/svg/224774/database
-  m_ImageList->Add(wxIcon(display_xpm));        // https://www.pngrepo.com/svg/131986/computer
-  m_ImageList->Add(wxIcon(miscellaneous_xpm));  // https://www.pngrepo.com/svg/230756/test
-  m_ImageList->Add(wxIcon(history_xpm));        // https://www.pngrepo.com/svg/95031/file
-  m_ImageList->Add(wxIcon(security_xpm));       // https://www.pngrepo.com/svg/219291/security-shield
-  m_ImageList->Add(wxIcon(shortcuts_xpm));      // https://www.pngrepo.com/svg/153991/keyboard
-  m_ImageList->Add(wxIcon(system_xpm));         // https://www.pngrepo.com/svg/230728/settings-gear
 }
 
 /*!
@@ -320,7 +253,10 @@ void OptionsPropertySheetDlg::CreateControls()
 
   wxString shortcutsTabTitle = _("Shortcuts");
 
-  m_Shortcuts_Panel = CreateShortcutsPanel(shortcutsTabTitle);
+  // TODO: Disabled until implemented
+  m_Shortcuts_Panel = CreateShortcutsPanel(shortcutsTabTitle + " (Not Implemented)");
+  m_Shortcuts_Panel->Disable();
+  //
 
   GetBookCtrl()->AddPage(m_Shortcuts_Panel, shortcutsTabTitle, false, 5);
 
@@ -626,18 +562,22 @@ wxPanel* OptionsPropertySheetDlg::CreateMiscellaneousPanel(const wxString& title
   itemFlexGridSizer50->Add(m_Misc_ShiftDoubleClickActionCB, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
   wxStaticBox* itemStaticBoxSizer56Static = new wxStaticBox(itemPanel44, wxID_ANY, _("Autotype"));
+  wxUtilities::DisableIfUnsupported(wxUtilities::Feature::Autotype, itemStaticBoxSizer56Static);
   auto *itemStaticBoxSizer56 = new wxStaticBoxSizer(itemStaticBoxSizer56Static, wxVERTICAL);
   itemBoxSizer45->Add(itemStaticBoxSizer56, 0, wxEXPAND|wxALL, 5);
   wxCheckBox* misc_AutotypeMinimizeCB = new wxCheckBox( itemPanel44, ID_CHECKBOX23, _("Minimize after Autotype"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxUtilities::DisableIfUnsupported(wxUtilities::Feature::Autotype, misc_AutotypeMinimizeCB);
   misc_AutotypeMinimizeCB->SetValue(false);
   itemStaticBoxSizer56->Add(misc_AutotypeMinimizeCB, 0, wxALIGN_LEFT|wxALL, 5);
 
   auto *itemBoxSizer58 = new wxBoxSizer(wxHORIZONTAL);
   itemStaticBoxSizer56->Add(itemBoxSizer58, 0, wxEXPAND|wxALL, 0);
   wxStaticText* itemStaticText59 = new wxStaticText( itemPanel44, wxID_STATIC, _("Default Autotype string:"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxUtilities::DisableIfUnsupported(wxUtilities::Feature::Autotype, itemStaticText59);
   itemBoxSizer58->Add(itemStaticText59, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
   wxTextCtrl* misc_AutotypeStringTXT = new wxTextCtrl( itemPanel44, ID_TEXTCTRL11, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+  wxUtilities::DisableIfUnsupported(wxUtilities::Feature::Autotype, misc_AutotypeStringTXT);
   itemBoxSizer58->Add(misc_AutotypeStringTXT, 2, wxEXPAND|wxALL, 5);
   itemBoxSizer58->AddStretchSpacer();
 
@@ -678,8 +618,8 @@ wxPanel* OptionsPropertySheetDlg::CreateMiscellaneousPanel(const wxString& title
   wxStaticText* itemStaticText73 = new wxStaticText( itemPanel44, wxID_STATIC, _("Browser Command Line parameters"), wxDefaultPosition, wxDefaultSize, 0 );
   itemBoxSizer71->Add(itemStaticText73, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-  wxTextCtrl* itemTextCtrl72 = new wxTextCtrl( itemPanel44, ID_TEXTCTRL14, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
-  itemBoxSizer71->Add(itemTextCtrl72, 1, wxEXPAND|wxALL, 5);
+  wxTextCtrl* misc_OtherBrowserParamsTXT = new wxTextCtrl( itemPanel44, ID_TEXTCTRL14, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+  itemBoxSizer71->Add(misc_OtherBrowserParamsTXT, 1, wxEXPAND|wxALL, 5);
 
   // Miscellaneous Preferences
   misc_ConfirmDeleteCB->SetValidator( wxGenericValidator(& m_Misc_ConfirmDelete) );
@@ -690,6 +630,7 @@ wxPanel* OptionsPropertySheetDlg::CreateMiscellaneousPanel(const wxString& title
   misc_UseDefUsernameCB->SetValidator( wxGenericValidator(& m_Misc_UseDefUsername) );
   misc_QuerySetDefUsernameCB->SetValidator( wxGenericValidator(& m_Misc_QuerySetDefUsername) );
   misc_OtherBrowserLocationTXT->SetValidator( wxGenericValidator(& m_Misc_OtherBrowserLocation) );
+  misc_OtherBrowserParamsTXT->SetValidator( wxGenericValidator(& m_Misc_OtherBrowserParams) );
 
   return itemPanel44;
 }
@@ -807,7 +748,7 @@ wxPanel* OptionsPropertySheetDlg::CreateSecurityPanel(const wxString& title)
   security_LockOnMinimizeCB->SetValue(false);
   itemBoxSizer87->Add(security_LockOnMinimizeCB, 0, wxALIGN_LEFT|wxALL, 5);
 
-  wxCheckBox* security_LockOnWindowLockCB = new wxCheckBox( itemPanel86, ID_CHECKBOX28, _("Lock password database on workstation lock"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxCheckBox* security_LockOnWindowLockCB = new wxCheckBox( itemPanel86, ID_CHECKBOX28, _("Lock password database on workstation lock (Not Implemented)"), wxDefaultPosition, wxDefaultSize, 0 );
   security_LockOnWindowLockCB->SetValue(false);
   itemBoxSizer87->Add(security_LockOnWindowLockCB, 0, wxALIGN_LEFT|wxALL, 5);
 
@@ -855,7 +796,10 @@ wxPanel* OptionsPropertySheetDlg::CreateSecurityPanel(const wxString& title)
   security_ConfirmCopyCB->SetValidator( wxGenericValidator(& m_Security_ConfirmCopy) );
   security_CopyPswdBrowseURLCB->SetValidator( wxGenericValidator(& m_Security_CopyPswdBrowseURL) );
   security_LockOnMinimizeCB->SetValidator( wxGenericValidator(& m_Security_LockOnMinimize) );
-  security_LockOnWindowLockCB->SetValidator( wxGenericValidator(& m_Security_LockOnWindowLock) );
+  // TODO: Disabled until implemented
+  //security_LockOnWindowLockCB->SetValidator( wxGenericValidator(& m_Security_LockOnWindowLock) );
+  security_LockOnWindowLockCB->Disable();
+  //
   m_Security_LockOnIdleTimeoutCB->SetValidator( wxGenericValidator(& m_Security_LockOnIdleTimeout) );
   security_HashIterSliderSL->SetValidator( wxGenericValidator(& m_Security_HashIterSlider) );
 
@@ -916,16 +860,17 @@ wxPanel* OptionsPropertySheetDlg::CreateSystemPanel(const wxString& title)
   wxStaticText* itemStaticText111 = new wxStaticText( itemPanel104, ID_STATICTEXT_7, _("used entries in System Tray menu"), wxDefaultPosition, wxDefaultSize, 0 );
   itemBoxSizer108->Add(itemStaticText111, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-  wxCheckBox* system_StartupCB = new wxCheckBox( itemPanel104, ID_CHECKBOX31, _("Start PasswordSafe at Login"), wxDefaultPosition, wxDefaultSize, 0 );
+  wxCheckBox* system_StartupCB = new wxCheckBox( itemPanel104, ID_CHECKBOX31, _("Start Password Safe at Login (Not Implemented)"), wxDefaultPosition, wxDefaultSize, 0 );
   system_StartupCB->SetValue(false);
   itemStaticBoxSizer106->Add(system_StartupCB, 0, wxALIGN_LEFT|wxALL, 5);
+  system_StartupCB->Disable();  // TODO: Disabled until implemented
 
-  m_System_SystemTrayWarningST = new wxStaticText( itemPanel104, wxID_STATIC, _("There appears to be no system tray support in your current environment.\nAny related functionality may not work as expected."), wxDefaultPosition, wxDefaultSize, 0 );
+  m_System_SystemTrayWarningST = new wxStaticText( itemPanel104, wxID_STATIC, _("There appears to be no system tray support in your current environment."), wxDefaultPosition, wxDefaultSize, 0 );
   itemStaticBoxSizer106->Add(m_System_SystemTrayWarningST, 0, wxALIGN_LEFT|wxALL|wxEXPAND, 5);
   m_System_SystemTrayWarningST->SetForegroundColour(*wxRED);
   m_System_SystemTrayWarningST->Hide();
 
-  wxStaticBox* itemStaticBoxSizer113Static = new wxStaticBox(itemPanel104, wxID_ANY, _("Recent PasswordSafe Databases"));
+  wxStaticBox* itemStaticBoxSizer113Static = new wxStaticBox(itemPanel104, wxID_ANY, _("Recent Password Safe Databases"));
   auto *itemStaticBoxSizer113 = new wxStaticBoxSizer(itemStaticBoxSizer113Static, wxVERTICAL);
   itemBoxSizer105->Add(itemStaticBoxSizer113, 0, wxEXPAND|wxALL, 5);
   auto *itemBoxSizer114 = new wxBoxSizer(wxHORIZONTAL);
@@ -1083,7 +1028,7 @@ void OptionsPropertySheetDlg::PrefsToPropSheet()
   m_Misc_DefaultUsernameLBL->Enable(m_Misc_UseDefUsername);
   m_Misc_QuerySetDefUsername = prefs->GetPref(PWSprefs::QuerySetDef);
   m_Misc_OtherBrowserLocation = prefs->GetPref(PWSprefs::AltBrowser).c_str();
-  m_Misc_OtherBrowserLocationparams = prefs->GetPref(PWSprefs::AltBrowserCmdLineParms).c_str();
+  m_Misc_OtherBrowserParams = prefs->GetPref(PWSprefs::AltBrowserCmdLineParms).c_str();
 
   // Password History preferences
   m_PasswordHistory_Save = prefs->GetPref(PWSprefs::SavePasswordHistory);
@@ -1115,6 +1060,8 @@ void OptionsPropertySheetDlg::PrefsToPropSheet()
   m_System_UseSystemTrayCB->SetValue(prefs->GetPref(PWSprefs::UseSystemTray));
   if (!IsTaskBarIconAvailable()) {
     m_System_SystemTrayWarningST->Show();
+    m_System_UseSystemTrayCB->SetValue(false);
+    m_System_UseSystemTrayCB->Disable();
   }
   m_System_Startup = false; // XXX TBD
   m_System_MaxMRUItems = prefs->GetPref(PWSprefs::MaxMRUItems);
@@ -1185,7 +1132,7 @@ void OptionsPropertySheetDlg::PropSheetToPrefs()
   prefs->SetPref(PWSprefs::QuerySetDef, m_Misc_QuerySetDefUsername);
   prefs->SetPref(PWSprefs::AltBrowser, tostringx(m_Misc_OtherBrowserLocation));
   prefs->SetPref(PWSprefs::AltBrowserCmdLineParms,
-                 tostringx(m_Misc_OtherBrowserLocationparams));
+                 tostringx(m_Misc_OtherBrowserParams));
 
   // Password History preferences
   prefs->SetPref(PWSprefs::SavePasswordHistory, m_PasswordHistory_Save);
@@ -1459,6 +1406,7 @@ void OptionsPropertySheetDlg::OnPWHistApply(wxCommandEvent& WXUNUSED(evt))
 void OptionsPropertySheetDlg::OnUpdateUI(wxUpdateUIEvent& evt)
 {
   bool dbIsReadOnly = m_core.IsReadOnly();
+  const bool isX11  = wxUtilities::IsDisplayManagerX11();
 
   switch (evt.GetId()) {
   /////////////////////////////////////////////////////////////////////////////
@@ -1496,7 +1444,7 @@ void OptionsPropertySheetDlg::OnUpdateUI(wxUpdateUIEvent& evt)
       evt.Enable(!dbIsReadOnly);
       break;
     case ID_TEXTCTRL11:
-      evt.Enable(!dbIsReadOnly);
+      evt.Enable(isX11 && !dbIsReadOnly);
       break;
     case ID_CHECKBOX24:
       evt.Enable(!dbIsReadOnly);

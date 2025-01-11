@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -21,7 +21,6 @@
 #include "Fonts.h"
 #include "InfoDisplay.h"
 #include "ViewReport.h"
-#include "ExpPWListDlg.h"
 #include "MenuShortcuts.h"
 #include "HKModifiers.h"
 
@@ -30,13 +29,13 @@
 #include "core/pwsprefs.h"
 #include "core/core.h"
 #include "core/PWHistory.h"
+#include "core/PWSLog.h"
 #include "core/StringXStream.h"
 
 #include "os/Debug.h"
 #include "os/dir.h"
 #include "os/env.h"
 #include "os/run.h"
-#include "os/logit.h"
 #include "os/lib.h"
 
 #include "resource.h"
@@ -63,6 +62,12 @@ static char THIS_FILE[] = __FILE__;
 void DboxMain::DatabaseModified(bool bChanged)
 {
   PWS_LOGIT_ARGS("bChanged=%s", bChanged ? L"true" : L"false");
+
+  // If called from worker thread, invoke on GUI thread.
+  if (!IsGuiThread()) {
+    InvokeOnGuiThread(m_hWnd, [&]() { DatabaseModified(bChanged); return 0; });
+    return;
+  }
 
   // Callback from PWScore if the database has been changed
   // (entries, preferences, header information,
@@ -127,6 +132,12 @@ void DboxMain::BlockLogoffShutdown(const bool bChanged)
 void DboxMain::UpdateGUI(UpdateGUICommand::GUI_Action ga, 
                          const CUUID &entry_uuid, CItemData::FieldType ft)
 {
+  // If called from worker thread, invoke on GUI thread.
+  if (!IsGuiThread()) {
+    InvokeOnGuiThread(m_hWnd, [&]() { UpdateGUI(ga, entry_uuid, ft); return 0; });
+    return;
+  }
+
   // Callback from PWScore if GUI needs updating
   // Note: For some values of 'ga', 'entry_uuid' & ft are invalid and not used.
   CItemData *pci(NULL);
@@ -213,6 +224,12 @@ void DboxMain::UpdateGUI(UpdateGUICommand::GUI_Action ga,
 void DboxMain::UpdateGUI(UpdateGUICommand::GUI_Action ga,
                          const std::vector<StringX> &vGroups)
 {
+  // If called from worker thread, invoke on GUI thread.
+  if (!IsGuiThread()) {
+    InvokeOnGuiThread(m_hWnd, [&]() { UpdateGUI(ga, vGroups); return 0; });
+    return;
+  }
+
   if (ga != UpdateGUICommand::GUI_REFRESH_GROUPS) {
     // Processed in the other overload of UpdateGUI
     ASSERT(0);
@@ -234,11 +251,23 @@ void DboxMain::UpdateGUIDisplay()
 
 void DboxMain::GUIRefreshEntry(const CItemData &ci, bool bAllowFail)
 {
+  // If called from worker thread, invoke on GUI thread.
+  if (!IsGuiThread()) {
+    InvokeOnGuiThread(m_hWnd, [&]() { GUIRefreshEntry(ci, bAllowFail); return 0; });
+    return;
+  }
+
   UpdateEntryImages(ci, bAllowFail);
 }
 
 void DboxMain::UpdateWizard(const std::wstring &s)
 {
+  // If called from worker thread, invoke on GUI thread.
+  if (!IsGuiThread()) {
+    InvokeOnGuiThread(m_hWnd, [&]() { UpdateWizard(s); return 0; });
+    return;
+  }
+
   if (m_pWZWnd != NULL)
     m_pWZWnd->SetWindowText(s.c_str());
 }
@@ -459,7 +488,8 @@ void DboxMain::UpdateToolBarForSelectedItem(const CItemData *pci)
   const int IDs[] = {ID_MENUITEM_COPYPASSWORD, ID_MENUITEM_COPYUSERNAME,
                      ID_MENUITEM_COPYNOTESFLD, ID_MENUITEM_AUTOTYPE, 
                      ID_MENUITEM_RUNCOMMAND,   ID_MENUITEM_EDITENTRY,
-                     ID_MENUITEM_PASSWORDSUBSET};
+                     ID_MENUITEM_PASSWORDSUBSET,
+                     ID_MENUITEM_COPY2FAAUTHCODE, ID_MENUITEM_VIEW2FAAUTHCODE};
 
   // Following test required since this can be called on exit, with a pci
   // from ItemData that's already been deleted. Ugh.
@@ -516,6 +546,14 @@ void DboxMain::UpdateToolBarForSelectedItem(const CItemData *pci)
       mainTBCtrl.EnableButton(ID_MENUITEM_COPYUSERNAME, TRUE);
     }
 
+    if (pci_entry == NULL || pci_entry->IsFieldValueEmpty(CItemData::TWOFACTORKEY, pbci)) {
+      mainTBCtrl.EnableButton(ID_MENUITEM_COPY2FAAUTHCODE, FALSE);
+      mainTBCtrl.EnableButton(ID_MENUITEM_VIEW2FAAUTHCODE, FALSE);
+    } else {
+      mainTBCtrl.EnableButton(ID_MENUITEM_COPY2FAAUTHCODE, TRUE);
+      mainTBCtrl.EnableButton(ID_MENUITEM_VIEW2FAAUTHCODE, TRUE);
+    }
+
     if (pci_entry == NULL || pci_entry->IsFieldValueEmpty(CItemData::NOTES, pbci)) {
       mainTBCtrl.EnableButton(ID_MENUITEM_COPYNOTESFLD, FALSE);
     } else {
@@ -535,14 +573,13 @@ void DboxMain::UpdateToolBarForSelectedItem(const CItemData *pci)
       mainTBCtrl.EnableButton(ID_MENUITEM_SENDEMAIL, TRUE);
     }
 
-    if (pci_entry == NULL || pci_entry->IsFieldValueEmpty(CItemData::URL, pbci) ||
-        pci_entry->IsURLEmail(pbci)) {
-      mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURL, FALSE);
-      mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURLPLUS, FALSE);
-    } else {
-      mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURL, TRUE);
-      mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURLPLUS, TRUE);
-    }
+    bool isBrowsable = pci_entry != nullptr && !pci_entry->IsFieldValueEmpty(CItemData::URL, pbci) && !pci_entry->IsURLEmail(pbci);
+    mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURL, isBrowsable);
+    mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURLPLUS, isBrowsable);
+
+    bool isAltBrowsable = isBrowsable && !PWSprefs::GetInstance()->GetPref(PWSprefs::AltBrowser).empty();
+    mainTBCtrl.EnableButton(ID_MENUITEM_BROWSEURLALT, isAltBrowsable);
+
 
     bool bDragBarState = PWSprefs::GetInstance()->GetPref(PWSprefs::ShowDragbar);
     if (bDragBarState) {
@@ -1055,10 +1092,7 @@ size_t DboxMain::FindAll(const CString &str, BOOL CaseSensitive,
         break;
       }
       if (bsFields.test(CItemData::PWHIST)) {
-        size_t pwh_max, err_num;
-        PWHistList pwhistlist;
-        CreatePWHistoryList(curitem.GetPWHistory(), pwh_max, err_num,
-                            pwhistlist, PWSUtil::TMC_XML);
+        PWHistList pwhistlist(curitem.GetPWHistory(), PWSUtil::TMC_XML);
         PWHistList::iterator iter;
         for (iter = pwhistlist.begin(); iter != pwhistlist.end();
              iter++) {
@@ -1149,7 +1183,9 @@ BOOL DboxMain::SelItemOk()
 BOOL DboxMain::SelectEntry(const int i, BOOL MakeVisible)
 {
   BOOL retval_tree, retval_list;
-  ASSERT(i >= 0);
+
+  if (i < 0) // BR1570 - may be -1 if we're in a filtered view
+    return false;
 
   if (m_ctlItemList.GetItemCount() == 0)
     return false;
@@ -2549,23 +2585,60 @@ void DboxMain::OnTimer(UINT_PTR nIDEvent)
     PWSprefs *prefs = PWSprefs::GetInstance();
     m_savedDBprefs = prefs->Store();
 
+    // Prepare to restore app window WS_DISABLED state for the case where modal dialogs are detected.
+    m_bMainWindowWasDisabled = (GetStyle() & WS_DISABLED) && CPWDialog::GetDialogTracker()->AnyModalDialogs();
+
     // Hide everything
     CPWDialog::GetDialogTracker()->HideOpenDialogs();
 
     // Now hide/minimize main dialog
     // NOTE: Do not call OnMinimize if minimizing as this will overwrite
     // the scroll bar positions
-    if (prefs->GetPref(PWSprefs::UseSystemTray)) {
-      ShowWindow(SW_HIDE);
-    } else {
-      ShowWindow(SW_MINIMIZE);
+    if (!prefs->GetPref(PWSprefs::UseSystemTray)) {
+      // With pwsafe in "taskbar" mode, and DB lock complete, immediately
+      // present the unlock password entry dialog as the pwsafe taskbar
+      // app window in minimized state.
+      PostMessage(WM_SYSCOMMAND, SC_RESTORE, PWSAFE_SC_LPARAM_INIT_APP_WINDOW_MINIMIZED);
     }
+    ShowWindow(SW_HIDE);
 
     if (nIDEvent == TIMER_LOCKONWTSLOCK)
       KillTimer(TIMER_LOCKONWTSLOCK);
   } else if (nIDEvent == TIMER_EXPENT) {
     // once a day, we want to check the expired entries list
     CheckExpireList();
+  } else if (nIDEvent == TIMER_FORCE_ALLOW_CAPTURE_BITMAP_BLINK) {
+
+    UINT nId;
+    UINT uiStyle;
+    int iWidth;
+    m_StatusBar.GetPaneInfo(CPWStatusBar::SB_SCR_CAP, nId, uiStyle, iWidth);
+
+    m_lScrCapStatusBarBlinkRemainingMsecs -= CStateBitmapControl::BLINK_RATE_MSECS;
+    m_lScrCapStatusBarBlinkRemainingMsecs = max(m_lScrCapStatusBarBlinkRemainingMsecs, (LONG)0);
+
+    UINT nIdNextBitmap;
+    if (
+      m_lScrCapStatusBarBlinkRemainingMsecs > 0 &&
+      PWSprefs::GetInstance()->GetPref(PWSprefs::ExcludeFromScreenCapture) &&
+      app.IsCommandLineForcedAllowScreenCapture()
+    ) {
+      // Continue blinking that force override is in effect.
+      nIdNextBitmap = nId == IDB_SCRCAP_ALLOWED_FORCED2 ? 
+        IDB_SCRCAP_ALLOWED_FORCED1 : IDB_SCRCAP_ALLOWED_FORCED2;
+    } else {
+      // Stop blinking, leaving a non-blinking status for the user.
+      nIdNextBitmap = IDB_SCRCAP_ALLOWED_FORCED1;
+      KillTimer(TIMER_FORCE_ALLOW_CAPTURE_BITMAP_BLINK);
+      m_bScreenCaptureStatusBarTimerEnabled = false;
+      m_lScrCapStatusBarBlinkRemainingMsecs = 0;
+    }
+
+    m_StatusBar.SetPaneInfo(CPWStatusBar::SB_SCR_CAP, nIdNextBitmap, uiStyle |= SBT_OWNERDRAW, m_StatusBar.GetBitmapWidth());
+    m_StatusBar.Invalidate();
+    m_StatusBar.UpdateWindow();
+  } else if (nIDEvent == TIMER_TWO_FACTOR_AUTH_CODE_UPDATE_CLIPBOARD) {
+    OnTwoFactorAuthCodeUpdateClipboardTimer();
   }
 }
 
@@ -2629,7 +2702,7 @@ bool DboxMain::LockDataBase()
   PWS_LOGIT;
 
   // Bug 1149: Check DB open before doing anything
-  if (!m_core.IsDbOpen())
+  if (!m_core.IsDbFileSet())
     return true;
 
   /*
@@ -2888,6 +2961,7 @@ void DboxMain::ChangeFont(const CFontsDialog::FontType iType)
       // Other fonts are just reset within the Fontdialog without exiting
       prefs->ResetPref(pref_Font);
       prefs->ResetPref(pref_FontSampleText);
+      prefs->SaveApplicationPreferences();
       return;
     }
 
@@ -2950,6 +3024,7 @@ void DboxMain::ChangeFont(const CFontsDialog::FontType iType)
 
           prefs->SetPref(pref_FontSampleText, LPCWSTR(fontdlg.m_sampletext));
         }
+        prefs->SaveApplicationPreferences();
         return;
       // NO "default" statement to generate compiler error if enum missing
     }
@@ -2974,13 +3049,14 @@ void DboxMain::ChangeFont(const CFontsDialog::FontType iType)
 
     // Save user's sample text
     prefs->SetPref(pref_FontSampleText, LPCWSTR(fontdlg.m_sampletext));
-  }
+    prefs->SaveApplicationPreferences();
+  } // rc== IDOK
 }
 
 void DboxMain::UpdateSystemTray(const DBSTATE s)
 {
   CString csTooltip(L"");
-  if (m_core.IsDbOpen()) {
+  if (m_core.IsDbFileSet()) {
     std::wstring cdrive, cdir, cFilename, cExtn;
     pws_os::splitpath(m_core.GetCurFile().c_str(), cdrive, cdir, cFilename, cExtn);
 
@@ -3242,29 +3318,31 @@ void DboxMain::SetDefaultColumns()
   SetHeaderInfo();
 }
 
-void DboxMain::SetColumns(const CString cs_ListColumns)
+static void tokenize_list(const CString &str, vector<int> &vec)
+{
+  // turn a comma-separated list of string into a vector<int>
+
+  const wchar_t pSep[] = L",";
+  // Duplicate input as strtok modifies the string
+  wchar_t* pTemp = _wcsdup((LPCWSTR)str);
+  wchar_t* next_token;
+  wchar_t* token = wcstok_s(pTemp, pSep, &next_token);
+  while (token) {
+    vec.push_back(_wtoi(token));
+    token = wcstok_s(nullptr, pSep, &next_token);
+  }
+  free(pTemp);
+}
+
+void DboxMain::SetColumns(const CString& cs_ListColumns)
 {
   //  User has saved the columns he/she wants and now we are putting them back
   CString cs_header;
   HDITEM hdi;
   hdi.mask = HDI_LPARAM;
-
   vector<int> vi_columns;
-  vector<int>::const_iterator vi_IterColumns;
-  const wchar_t pSep[] = L",";
-  wchar_t *pTemp;
 
-  // Duplicate as strtok modifies the string
-  pTemp = _wcsdup((LPCWSTR)cs_ListColumns);
-
-  // Capture columns shown:
-  wchar_t *next_token;
-  wchar_t *token = wcstok_s(pTemp, pSep, &next_token);
-  while(token) {
-    vi_columns.push_back(_wtoi(token));
-    token = wcstok_s(NULL, pSep, &next_token);
-  }
-  free(pTemp);
+  tokenize_list(cs_ListColumns, vi_columns);
 
   // If present, the images are always first
   int iType= *vi_columns.begin();
@@ -3277,10 +3355,8 @@ void DboxMain::SetColumns(const CString cs_ListColumns)
   int icol(0);
   int iWidth, iSortColumn /* Not used here but needed for GetHeaderColumnProperties call */;
 
-  for (vi_IterColumns = vi_columns.begin();
-       vi_IterColumns != vi_columns.end();
-       vi_IterColumns++) {
-    iType = *vi_IterColumns;
+  for (auto iter : vi_columns) {
+    iType = iter;
     GetHeaderColumnProperties(iType, cs_header, iWidth, iSortColumn);
     // Images (if present) must be the first column!
     if (iType == CItemData::UUID && icol != 0)
@@ -3297,34 +3373,17 @@ void DboxMain::SetColumns(const CString cs_ListColumns)
   SetHeaderInfo();
 }
 
-void DboxMain::SetColumnWidths(const CString cs_ListColumnsWidths)
+void DboxMain::SetColumnWidths(const CString& cs_ListColumnsWidths)
 {
   //  User has saved the columns he/she wants and now we are putting them back
   std::vector<int> vi_widths;
-  std::vector<int>::const_iterator vi_IterWidths;
-  const wchar_t pSep[] = L",";
-  wchar_t *pWidths;
 
-  // Duplicate as strtok modifies the string
-  pWidths = _wcsdup((LPCWSTR)cs_ListColumnsWidths);
-
-  // Capture column widths shown:
-  wchar_t *next_token;
-  wchar_t *token = wcstok_s(pWidths, pSep, &next_token);
-  while(token) {
-    vi_widths.push_back(_wtoi(token));
-    token = wcstok_s(NULL, pSep, &next_token);
-  }
-  free(pWidths);
+  tokenize_list(cs_ListColumnsWidths, vi_widths);
 
   int icol = 0, index;
 
-  for (vi_IterWidths = vi_widths.begin();
-       vi_IterWidths != vi_widths.end();
-       vi_IterWidths++) {
-    if (icol == (m_nColumns - 1))
-      break;
-    int iWidth = *vi_IterWidths;
+  for (auto iter : vi_widths) {
+    int iWidth = iter;
     m_ctlItemList.SetColumnWidth(icol, iWidth);
     index = m_LVHdrCtrl.OrderToIndex(icol);
     m_nColumnWidthByIndex[index] = iWidth;
@@ -3335,9 +3394,12 @@ void DboxMain::SetColumnWidths(const CString cs_ListColumnsWidths)
   if (m_bImageInLV) {
     m_ctlItemList.SetColumnWidth(0, LVSCW_AUTOSIZE);
   }
-  // Last column special
-  index = m_LVHdrCtrl.OrderToIndex(m_nColumns - 1);
-  m_ctlItemList.SetColumnWidth(index, LVSCW_AUTOSIZE_USEHEADER);
+
+  // BR540 - no need to treat last column as special.
+  // Last column special:
+  // "LVSCW_AUTOSIZE_USEHEADER: Automatically sizes the column to fit the header text. If you use this value with the last column, its width is set to fill the remaining width of the list-view control."
+  // index = m_LVHdrCtrl.OrderToIndex(m_nColumns - 1);
+  // m_ctlItemList.SetColumnWidth(index, LVSCW_AUTOSIZE_USEHEADER);
 }
 
 void DboxMain::AddColumn(const int iType, const int iIndex)
@@ -4045,16 +4107,12 @@ void DboxMain::OnHideFindToolbar()
 
 void DboxMain::SetFindToolBar(bool bShow)
 {
-  if (m_FindToolBar.GetSafeHwnd() == NULL)
-    return;
-
-  SetToolBarPositions();
-
-  if (!m_FindToolBar.IsWindowVisible() && !bShow)
+  if (m_FindToolBar.GetSafeHwnd() == NULL || (!m_FindToolBar.IsWindowVisible() && !bShow))
     return;  // Nothing to do if not visible
 
   m_FindToolBar.ShowFindToolBar(bShow);
   SetToolBarPositions();
+  PWSprefs::GetInstance()->SetPref(PWSprefs::FindToolBarActive, bShow); // to persist across instances.
 }
 
 void DboxMain::SetToolBarPositions()
@@ -4544,7 +4602,7 @@ HICON DboxMain::GetEntryIcon(const int nImage) const
   return hIcon;
 }
 
-bool DboxMain::SetNotesWindow(const CPoint ptClient, const bool bVisible)
+bool DboxMain::SetInfoDisplay(const CPoint ptClient, const bool bVisible)
 {
 /*
  *  Use of CInfoDisplay to replace MS's broken ToolTips support.
@@ -4556,28 +4614,37 @@ bool DboxMain::SetNotesWindow(const CPoint ptClient, const bool bVisible)
 
   const CItemData *pci(NULL);
   CPoint ptScreen(ptClient);
-  StringX sx_notes(L"");
+  StringX sx_text(L"");
   UINT nFlags;
   HTREEITEM hItem(NULL);
   int nItem(-1);
+  int nChildren(0);
 
-  if (m_pNotesDisplay == NULL)
+  if (m_pInfoDisplay == NULL)
     return false;
 
   if (!bVisible) {
-    m_pNotesDisplay->SetWindowText(sx_notes.c_str());
-    m_pNotesDisplay->ShowWindow(SW_HIDE);
+    m_pInfoDisplay->SetWindowText(sx_text.c_str());
+    m_pInfoDisplay->ShowWindow(SW_HIDE);
     return false;
   }
 
-  if (m_ctlItemTree.IsWindowVisible()) {
+  if (m_ctlItemTree.IsWindowVisible()) { // tree view
     m_ctlItemTree.ClientToScreen(&ptScreen);
     hItem = m_ctlItemTree.HitTest(ptClient, &nFlags);
     if (hItem != NULL &&
-        (nFlags & (TVHT_ONITEM | TVHT_ONITEMBUTTON | TVHT_ONITEMINDENT))) {
+        (nFlags & (TVHT_ONITEM | TVHT_ONITEMBUTTON | TVHT_ONITEMINDENT)) &&
+        PWSprefs::GetInstance()->GetPref(PWSprefs::ShowNotesAsTooltipsInViews) // need to check prefs here because we're called to count children too
+      ) {
       pci = (CItemData *)m_ctlItemTree.GetItemData(hItem);
     }
-  } else {
+    // Check if we're on a group, if so, count children:
+    if (hItem != nullptr && !m_ctlItemTree.IsLeaf(hItem))
+    {
+      nChildren = m_ctlItemTree.CountLeafChildren(hItem);
+      TRACE(L"num of children: %d\n", nChildren);
+    }
+  } else { // list view
     m_ctlItemList.ClientToScreen(&ptScreen);
     nItem = m_ctlItemList.HitTest(ptClient, &nFlags);
     if (nItem >= 0) {
@@ -4589,34 +4656,38 @@ bool DboxMain::SetNotesWindow(const CPoint ptClient, const bool bVisible)
   if (pci != NULL) {
     if (pci->IsShortcut())
       pci = GetBaseEntry(pci);
-    sx_notes = pci->GetNotes();
+    sx_text = pci->GetNotes();
+  } else if (nChildren > 0) // we're on a group, show number of children
+  {
+    const CString fmt_str(MAKEINTRESOURCE(nChildren > 1 ? IDS_GC_N_CHILDREN : IDS_GC_ONE_CHILD));
+    Format(sx_text, fmt_str, nChildren);
   }
 
-  if (!sx_notes.empty()) {
-    Replace(sx_notes, StringX(L"\r\n"), StringX(L"\n"));
-    Remove(sx_notes, L'\r');
+  if (!sx_text.empty()) {
+    Replace(sx_text, StringX(L"\r\n"), StringX(L"\n"));
+    Remove(sx_text, L'\r');
 
-    if (sx_notes.length() > 256)
-      sx_notes = sx_notes.substr(0, 250) + L"[...]";
+    if (sx_text.length() > 256)
+      sx_text = sx_text.substr(0, 250) + L"[...]";
   }
 
   // move window
-  CSecString cs_oldnotes;
-  m_pNotesDisplay->GetWindowText(cs_oldnotes);
-  if (LPCWSTR(cs_oldnotes) != sx_notes)
-    m_pNotesDisplay->SetWindowText(sx_notes.c_str());
+  CSecString cs_oldtext;
+  m_pInfoDisplay->GetWindowText(cs_oldtext);
+  if (LPCWSTR(cs_oldtext) != sx_text)
+    m_pInfoDisplay->SetWindowText(sx_text.c_str());
 
-  m_pNotesDisplay->SetWindowPos(NULL, ptScreen.x, ptScreen.y, 0, 0,
+  m_pInfoDisplay->SetWindowPos(NULL, ptScreen.x, ptScreen.y, 0, 0,
                                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-  m_pNotesDisplay->ShowWindow(!sx_notes.empty() ? SW_SHOWNA : SW_HIDE);
+  m_pInfoDisplay->ShowWindow(!sx_text.empty() ? SW_SHOWNA : SW_HIDE);
 
-  return !sx_notes.empty();
+  return !sx_text.empty();
 }
 
 void DboxMain::UpdateNotesTooltipFont()
 {
   CFont *pNotes = Fonts::GetInstance()->GetNotesFont();
-  m_pNotesDisplay->SendMessage(WM_SETFONT, (WPARAM)pNotes, 1);
+  m_pInfoDisplay->SendMessage(WM_SETFONT, (WPARAM)pNotes, 1);
 }
 
 CItemData *DboxMain::GetLastSelected() const

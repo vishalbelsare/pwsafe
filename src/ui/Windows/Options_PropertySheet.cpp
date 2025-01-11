@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -243,6 +243,8 @@ void COptions_PropertySheet::SetupInitialValues()
       prefs->GetPref(PWSprefs::ClearClipboardOnMinimize) ? TRUE : FALSE;
   m_OPTMD.ClearClipboardOnExit =
       prefs->GetPref(PWSprefs::ClearClipboardOnExit) ? TRUE : FALSE;
+  m_OPTMD.ExcludeFromClipboardHistory =
+      prefs->GetPref(PWSprefs::ExcludeFromClipboardHistory) ? TRUE : FALSE;
   m_OPTMD.LockOnMinimize =
       prefs->GetPref(PWSprefs::DatabaseClear) ? TRUE : FALSE;
   m_OPTMD.ConfirmCopy =
@@ -256,6 +258,8 @@ void COptions_PropertySheet::SetupInitialValues()
   m_OPTMD.HashIters = GetMainDlg()->GetHashIters();
   m_OPTMD.CopyPswdBrowseURL =
       prefs->GetPref(PWSprefs::CopyPasswordWhenBrowseToURL) ? TRUE : FALSE;
+  m_OPTMD.ExcludeFromScreenCapture =
+      prefs->GetPref(PWSprefs::ExcludeFromScreenCapture) ? TRUE : FALSE;
   // Preferences min/max values
   m_OPTMD.prefminIdleTimeout = (short)prefs->GetPrefMinVal(PWSprefs::IdleTimeout);
   m_OPTMD.prefmaxIdleTimeout = (short)prefs->GetPrefMaxVal(PWSprefs::IdleTimeout);
@@ -346,10 +350,10 @@ void COptions_PropertySheet::UpdateCopyPreferences()
   prefs->SetPref(PWSprefs::WindowTransparency,
                   m_OPTMD.PercentTransparency, true);
   
-  // Changes are highlighted only if "hightlight changes" is true and 
+  // Changes are highlighted only if "highlight changes" is true and 
   // "save immediately" is false.
-  // So only need to refresh view if the new combination is different
-  // to the original combination
+  // So only need to refresh view if the new master password is different
+  // from the original one.
   m_bRefreshViews = (m_save_bHighlightChanges && !m_save_bSaveImmediately) != 
                     (m_OPTMD.HighlightChanges && !m_OPTMD.SaveImmediately);
 
@@ -378,10 +382,12 @@ void COptions_PropertySheet::UpdateCopyPreferences()
   prefs->SetPref(PWSprefs::MinimizeOnAutotype,
                  m_OPTMD.MinAuto == TRUE, true);
 
+  // Security
   prefs->SetPref(PWSprefs::ClearClipboardOnMinimize,
                  m_OPTMD.ClearClipboardOnMinimize == TRUE, true);
   prefs->SetPref(PWSprefs::ClearClipboardOnExit,
                  m_OPTMD.ClearClipboardOnExit == TRUE, true);
+  prefs->SetPref(PWSprefs::ExcludeFromClipboardHistory, m_OPTMD.ExcludeFromClipboardHistory == TRUE, true);
   prefs->SetPref(PWSprefs::DatabaseClear,
                  m_OPTMD.LockOnMinimize == TRUE, true);
   prefs->SetPref(PWSprefs::DontAskQuestion,
@@ -390,6 +396,8 @@ void COptions_PropertySheet::UpdateCopyPreferences()
                  m_OPTMD.LockOnWindowLock == TRUE, true);
   prefs->SetPref(PWSprefs::CopyPasswordWhenBrowseToURL,
                  m_OPTMD.CopyPswdBrowseURL == TRUE, true);
+  prefs->SetPref(PWSprefs::ExcludeFromScreenCapture,
+                 m_OPTMD.ExcludeFromScreenCapture == TRUE, true);
 
   prefs->SetPref(PWSprefs::UseSystemTray,
                  m_OPTMD.UseSystemTray == TRUE, true);

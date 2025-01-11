@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -14,13 +14,19 @@
 #include "stdafx.h"
 #include "winutils.h"
 
+#include "WtsApi32.h"
+#pragma comment (lib, "Wtsapi32")
+
 #include <sstream>
 
 #include "core/StringX.h"
 #include "core/SysInfo.h"
 #include "os/dir.h"
 
+#include "ThisMfcApp.h"
 #include "GeneralMsgBox.h"
+#include "PWDialog.h"
+
 #include "core/PWSprefs.h"
 #include "core/XMLprefs.h"
 #include "os/env.h"
@@ -93,7 +99,7 @@ bool WinUtil::OfferConfigMigration()
    * Offer the user the option of migrating config files iff ALL
    * of the following are true:
    * 1. Config file is currently in executable directory
-   * 2. This is NOT a U3 installation
+   * 2. (obsolete)
    * 3. The executable directory is on a fixed or network drive
    * 4. The user did NOT override the config file, user name or host name
    *    via command line (-g, -u, -h).
@@ -103,7 +109,7 @@ bool WinUtil::OfferConfigMigration()
   const SysInfo *si = SysInfo::GetInstance();
 
   // start with quickest checks
-  if (si->IsUnderU3() || PWSprefs::UserSetCfgFile() ||
+  if (PWSprefs::UserSetCfgFile() ||
       (si->GetRealHost() != si->GetEffectiveHost()) ||
       (si->GetRealUser() != si->GetEffectiveUser()))
     return false;
@@ -275,7 +281,7 @@ UINT WinUtil::GetDPI(HWND hwnd)
       inited = true;
     }
   }
-  UINT retval = 96;
+  UINT retval = defDPI;
   const stringT dbg_dpi = pws_os::getenv("PWS_DPI", false);
   if (dbg_dpi.empty()) {
     if (fp_getdpi4_window != nullptr && fp_getdpi4_system != nullptr)
@@ -363,8 +369,8 @@ BOOL WinUtil::LoadScaledBitmap(CBitmap &bitmap, UINT nID, bool fixBckgrnd, HWND 
 
   UINT dpi = GetDPI(hwnd);
   tmpBitmap.GetBitmap(&bm);
-  int dpiScaledWidth = MulDiv(bm.bmWidth, dpi, 96);
-  int dpiScaledHeight = MulDiv(bm.bmHeight, dpi, 96);
+  int dpiScaledWidth = MulDiv(bm.bmWidth, dpi, defDPI);
+  int dpiScaledHeight = MulDiv(bm.bmHeight, dpi, defDPI);
 
   WinUtil::ResizeBitmap(tmpBitmap, bitmap, dpiScaledWidth, dpiScaledHeight);
   tmpBitmap.DeleteObject();
@@ -397,3 +403,20 @@ bool WinUtil::HasTouchscreen() // for BR1539 workaround
   int value = ::GetSystemMetrics(SM_DIGITIZER);
   return (value != 0);
 }
+
+DWORD WinUtil::SetWindowExcludeFromScreenCapture(HWND hwnd, bool excludeFromScreenCapture)
+{
+  ASSERT(::IsWindow(hwnd));
+  if (!::IsWindow(hwnd))
+    return ERROR_INVALID_WINDOW_HANDLE;
+  DWORD dwNewDisplayAffinity = excludeFromScreenCapture ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
+  DWORD dwCurrentDisplayAffinity;
+  DWORD dwResult = ERROR_SUCCESS;
+  if (::GetWindowDisplayAffinity(hwnd, &dwCurrentDisplayAffinity) &&
+      dwNewDisplayAffinity != dwCurrentDisplayAffinity &&
+      !::SetWindowDisplayAffinity(hwnd, dwNewDisplayAffinity)) {
+    dwResult = ::GetLastError();
+  }
+  return dwResult;
+}
+

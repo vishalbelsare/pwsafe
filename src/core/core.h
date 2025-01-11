@@ -72,6 +72,16 @@
 #define IDSC_FLDNMPWPOLICYNAME          3072
 #define IDSC_FLDNMKBSHORTCUT            3073
 #define IDSC_FLDNMATTREF                3074
+#define IDSC_FLDNMCCNUM                 3075
+#define IDSC_FLDNMCCEXP                 3076
+#define IDSC_FLDNMCCVV                  3077
+#define IDSC_FLDNMCCPIN                 3078
+#define IDSC_FLDNMTWOFACTORKEY          3079
+#define IDSC_FLDNMTWOFACTORKEY_UI       3080
+#define IDSC_FLDNMTOTPCONFIG            3081
+#define IDSC_FLDNMTOTPLENGTH            3082
+#define IDSC_FLDNMTOTPTIMESTEP          3083
+#define IDSC_FLDNMTOTPSTARTTIME         3084
 
 #define IDSC_CONFIG_NONE                3230
 #define IDSC_CONFIG_REGISTRY            3231
@@ -104,7 +114,7 @@
 #define IDSC_IMPORTLINESKIPPED          3259
 #define IDSC_IMPORTKNOWNHDRS            3260
 #define IDSC_IMPORTEMPTYLINESKIPPED     3261
-/* #define IDSC_PWHERRORLINE               3262 */ // Not defined and not used
+#define IDSC_UNKNOWNHDRS                3262
 #define IDSC_PWHISTORYSKIPPED           3263
 #define IDSC_IMPORTCONFLICTS1           3264
 #define IDSC_IMPORTCONFLICTS2           3265
@@ -288,6 +298,13 @@
 #define IDSC_FOUNDENTRIESFILTER         3461
 #define IDSC_IMPORTINVALIDDELIMITER     3462
 
+#define IDSC_TOTP_ERROR_SUCCESS               3500
+#define IDSC_TOTP_ERROR_UNKNOWN               3501
+#define IDSC_TOTP_ERROR_INVALID_CONFIG        3502
+#define IDSC_TOTP_ERROR_KEY_NOT_FOUND         3503
+#define IDSC_TOTP_ERROR_KEY_INVALID_CHARS      3504
+#define IDSC_TOTP_ERROR_BASE32_DECODE_FAILURE 3505
+
 // Keep DCA together
 #define IDSC_CURRENTDEFAULTDCA          4000
 #define IDSC_DCABROWSE                  4001
@@ -354,3 +371,18 @@
 
 #define IDSC_RELATIVE_SMALL             5968
 #define IDSC_AND_SMALL                  5969
+
+// Alias Errors
+#define IDSC_ALIASNOTFOUNDA             5455
+#define IDSC_ALIASNOTFOUND0A            5456
+#define IDSC_ALIASNOTFOUND0B            5457
+#define IDSC_ALIASNOTFOUND1A            5458
+#define IDSC_ALIASNOTFOUND1B            5459
+#define IDSC_ALIASNOTFOUND2A            5460
+#define IDSC_ALIASNOTFOUND2B            5461
+#define IDSC_ALIASNOTFOUND2C            5462
+#define IDSC_ALIASNOTFOUNDZ             5463
+#define IDSC_BASEISALIAS                5465
+#define IDSC_ALIASCANTREFERTOITSELF     5466
+#define IDSC_BASEHASNOTITLE             5467
+#define IDSC_ABASEINVALID               5499

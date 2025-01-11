@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -17,7 +17,7 @@ class CommandInterface;
 #include "ItemData.h"
 #include "PWSfile.h"
 #include "StringX.h"
-#include "os/UUID.h"
+#include "../os/UUID.h"
 
 #include "coredefs.h"
 
@@ -170,20 +170,20 @@ public:
   enum Function {NP_ADDNEW = 0, NP_REPLACEALL};
 
   static DBPolicyNamesCommand *Create(CommandInterface *pcomInt,
-                                PSWDPolicyMap &MapPSWDPLC,
+                                const PSWDPolicyMap &MapPSWDPLC,
                                 Function function)
   { return new DBPolicyNamesCommand(pcomInt, MapPSWDPLC, function); }
   static DBPolicyNamesCommand *Create(CommandInterface *pcomInt,
-                                StringX &sxPolicyName, PWPolicy &st_pp)
+                                const StringX &sxPolicyName, const PWPolicy &st_pp)
   { return new DBPolicyNamesCommand(pcomInt, sxPolicyName, st_pp); }
   int Execute();
   void Undo();
 
 private:
-  DBPolicyNamesCommand(CommandInterface *pcomInt, PSWDPolicyMap &MapPSWDPLC,
+  DBPolicyNamesCommand(CommandInterface *pcomInt, const PSWDPolicyMap &MapPSWDPLC,
                        Function function);
-  DBPolicyNamesCommand(CommandInterface *pcomInt, StringX &sxPolicyName,
-                       PWPolicy &st_pp);
+  DBPolicyNamesCommand(CommandInterface *pcomInt, const StringX &sxPolicyName,
+                       const PWPolicy &st_pp);
 
   PSWDPolicyMap m_OldMapPSWDPLC;
   PSWDPolicyMap m_NewMapPSWDPLC;

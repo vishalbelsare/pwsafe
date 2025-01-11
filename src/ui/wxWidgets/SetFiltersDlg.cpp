@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -57,6 +57,7 @@ BEGIN_EVENT_TABLE( SetFiltersDlg, wxDialog )
   EVT_BUTTON( wxID_OK, SetFiltersDlg::OnOkClick )
   EVT_BUTTON( wxID_CANCEL, SetFiltersDlg::OnCancelClick )
   EVT_BUTTON( wxID_HELP, SetFiltersDlg::OnHelpClick )
+  EVT_CLOSE( SetFiltersDlg::OnClose )
 ////@end SetFiltersDlg event table entries
 
 END_EVENT_TABLE()
@@ -65,23 +66,10 @@ END_EVENT_TABLE()
 /*!
  * SetFiltersDlg constructors
  */
-
-SetFiltersDlg::SetFiltersDlg() : m_pfilters(nullptr),
-                                 m_currentFilters(nullptr),
-                                 m_bCanHaveAttachments(false),
-                                 m_psMediaTypes(nullptr),
-                                 m_filtertype(DFTYPE_INVALID),
-                                 m_filterpool(FPOOL_LAST),
-                                 m_AppliedCalled(nullptr)
-{
-  Init();
-}
-
-SetFiltersDlg::SetFiltersDlg(wxWindow* parent,
-                             st_filters *pfilters,
+SetFiltersDlg::SetFiltersDlg(wxWindow *parent, st_filters *pfilters,
                              st_filters *currentFilters,
                              bool *appliedCalled,
-                             const FilterType &filtertype,
+                             const FilterType filtertype,
                              const FilterPool filterpool,
                              const bool bCanHaveAttachments,
                              const std::set<StringX> *psMediaTypes,
@@ -97,9 +85,13 @@ SetFiltersDlg::SetFiltersDlg(wxWindow* parent,
                                             m_filterpool(filterpool),
                                             m_AppliedCalled(appliedCalled)
 {
+  wxASSERT(!parent || parent->IsTopLevel());
+
   wxString heading(caption);
   
-  Init();
+  ASSERT(m_pfilters);
+  m_filterName = towxstring(m_pfilters->fname);
+  
   switch(filtertype) {
     case DFTYPE_PWHISTORY:
       heading = SYMBOL_SETFILTERS_PWHIST_TITLE;
@@ -117,16 +109,7 @@ SetFiltersDlg::SetFiltersDlg(wxWindow* parent,
         heading = SYMBOL_SETFILTERS_TITLE;
       break;
   }
-  Create(parent, id, heading, pos, size, style);
-}
 
-
-/*!
- * SetFiltersDlg creator
- */
-
-bool SetFiltersDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
 ////@begin SetFiltersDlg creation
   SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY|wxWS_EX_BLOCK_EVENTS);
   wxDialog::Create( parent, id, caption, pos, size, style );
@@ -147,34 +130,16 @@ bool SetFiltersDlg::Create( wxWindow* parent, wxWindowID id, const wxString& cap
     Move(x + SET_FILTER_WINDOW_OFFSET, y + SET_FILTER_WINDOW_OFFSET);
   }
 ////@end SetFiltersDlg creation
-  return true;
 }
 
-
-/*!
- * SetFiltersDlg destructor
- */
-
-SetFiltersDlg::~SetFiltersDlg()
+SetFiltersDlg* SetFiltersDlg::Create(wxWindow *parent, st_filters *pfilters, st_filters *currentFilters, 
+  bool *appliedCalled, const FilterType filtertype, FilterPool filterpool, 
+  const bool bCanHaveAttachments, const std::set<StringX> *psMediaTypes, wxWindowID id, 
+  const wxString& caption, const wxPoint& pos, const wxSize& size, long style)
 {
-////@begin SetFiltersDlg destruction
-////@end SetFiltersDlg destruction
+  return new SetFiltersDlg(parent, pfilters, currentFilters, appliedCalled, filtertype, filterpool, 
+                           bCanHaveAttachments, psMediaTypes, id, caption, pos, size, style);
 }
-
-
-/*!
- * Member initialisation
- */
-
-void SetFiltersDlg::Init()
-{
-////@begin SetFiltersDlg member initialisation
-  m_filterGrid = NULL;
-  ASSERT(m_pfilters);
-  m_filterName = towxstring(m_pfilters->fname);
-////@end SetFiltersDlg member initialisation
-}
-
 
 /*!
  * Control creation for SetFiltersDlg
@@ -210,6 +175,7 @@ void SetFiltersDlg::CreateControls()
   m_filterGrid = new pwFiltersGrid( itemDialog1, ID_FILTERGRID,
                                    m_pfilters, m_filtertype, m_filterpool, m_bCanHaveAttachments, m_psMediaTypes, true,
                                    wxDefaultPosition, wxSize(200, 150), wxSUNKEN_BORDER|wxHSCROLL|wxVSCROLL );
+  m_origFilters = *m_pfilters; // set origFilters here, because pwFiltersGrid insert empty item, if list is empty
   itemBoxSizer2->Add(m_filterGrid, 1, wxGROW|wxALL|wxEXPAND, 5);
 
   wxBoxSizer* itemBoxSizer5 = new wxBoxSizer(wxHORIZONTAL);
@@ -239,7 +205,7 @@ void SetFiltersDlg::CreateControls()
  * wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_APPLY
  */
 
-void SetFiltersDlg::OnApplyClick( wxCommandEvent& event )
+void SetFiltersDlg::OnApplyClick( wxCommandEvent& /*event*/ )
 {
   if ((m_filtertype == DFTYPE_MAIN) && Validate() && TransferDataFromWindow()) {
     // Second call will clear and remove active filter
@@ -257,7 +223,7 @@ void SetFiltersDlg::OnApplyClick( wxCommandEvent& event )
     }
     // At first time check parameter
     if(m_filterName.IsEmpty()) {
-      wxMessageBox(_("No filter name given."), _("Please name this filter."), wxOK|wxICON_ERROR);
+      wxMessageBox(_("No filter name given."), _("Name this filter."), wxOK|wxICON_ERROR);
       return;
     }
     if(! VerifyFilters()) {
@@ -288,7 +254,7 @@ void SetFiltersDlg::OnOkClick( wxCommandEvent& event )
 {
   if (Validate() && TransferDataFromWindow()) {
     if((m_filtertype == DFTYPE_MAIN) && m_filterName.IsEmpty()) {
-      wxMessageBox(_("No filter name given."), _("Please name this filter."), wxOK|wxICON_ERROR);
+      wxMessageBox(_("No filter name given."), _("Name this filter."), wxOK|wxICON_ERROR);
       return;
     }
     if(! VerifyFilters()) {
@@ -300,27 +266,6 @@ void SetFiltersDlg::OnOkClick( wxCommandEvent& event )
       m_pfilters->fname = m_filterName.c_str();
   }
   EndModal(wxID_OK);
-}
-
-
-/*!
- * wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_CANCEL
- */
-
-void SetFiltersDlg::OnCancelClick( wxCommandEvent& event )
-{
-  if((m_filtertype == DFTYPE_MAIN) && *m_AppliedCalled) {
-    wxMessageDialog dialog(this, _("Applied pressed before Cancel"), _("Do you wish to overtake applied filter?"), wxYES_NO | wxICON_EXCLAMATION);
-    if(dialog.ShowModal() == wxID_NO) {
-      m_currentFilters->Empty();
-
-      wxCommandEvent event(wxEVT_COMMAND_MENU_SELECTED, ID_APPLYFILTER);
-      GetParent()->GetEventHandler()->ProcessEvent(event);
-      
-      *m_AppliedCalled = false;
-    }
-  }
-  EndModal(wxID_CANCEL);
 }
 
 
@@ -345,7 +290,6 @@ bool SetFiltersDlg::ShowToolTips()
 {
   return true;
 }
-
 
 /*!
  * Get bitmap resources
@@ -428,7 +372,7 @@ bool SetFiltersDlg::VerifyFilters()
   if(iError != -1) {
     stringT msg;
     Format(msg, _("Row %d is incomplete.").c_str(), iError);
-    wxMessageBox(_("Please set both Field and Criteria."), wxString(msg), wxOK|wxICON_ERROR);
+    wxMessageBox(_("Set both Field and Criteria."), wxString(msg), wxOK|wxICON_ERROR);
     return false;
   }
   
@@ -436,22 +380,45 @@ bool SetFiltersDlg::VerifyFilters()
     if((iHistory != -1) && (m_pfilters->vHfldata.empty() || ! m_pfilters->num_Hactive)) {
       stringT msg;
       Format(msg, _("Row %d is incomplete.").c_str(), iHistory);
-      wxMessageBox(_("Please set both Field and Criteria or update History filters."), wxString(msg), wxOK|wxICON_ERROR);
+      wxMessageBox(_("Set both Field and Criteria or update History filters."), wxString(msg), wxOK|wxICON_ERROR);
       return false;
     }
     if((iPolicy != -1) && (m_pfilters->vPfldata.empty() || ! m_pfilters->num_Pactive)) {
       stringT msg;
       Format(msg, _("Row %d is incomplete.").c_str(), iPolicy);
-      wxMessageBox(_("Please set both Field and Criteria or update Policy filters."), wxString(msg), wxOK|wxICON_ERROR);
+      wxMessageBox(_("Set both Field and Criteria or update Policy filters."), wxString(msg), wxOK|wxICON_ERROR);
       return false;
     }
     if((iAttachment != -1) && (m_pfilters->vAfldata.empty() || ! m_pfilters->num_Aactive)) {
       stringT msg;
       Format(msg, _("Row %d is incomplete.").c_str(), iAttachment);
-      wxMessageBox(_("Please set both Field and Criteria or update Attachment filters."), wxString(msg), wxOK|wxICON_ERROR);
+      wxMessageBox(_("Set both Field and Criteria or update Attachment filters."), wxString(msg), wxOK|wxICON_ERROR);
       return false;
     }
   }
   
   return true;
+}
+
+bool SetFiltersDlg::IsChanged() const {
+  return *m_pfilters != m_origFilters || m_filterName != m_origFilters.fname;
+}
+
+bool SetFiltersDlg::SyncAndQueryCancel(bool showDialog) {
+  if((m_filtertype == DFTYPE_MAIN) && *m_AppliedCalled) {
+    if (showDialog) {
+      wxMessageDialog dialog(this, _("Applied pressed before Cancel"), _("Do you wish to overtake applied filter?"), wxYES_NO | wxICON_EXCLAMATION);
+      if(dialog.ShowModal() == wxID_NO) {
+        m_currentFilters->Empty();
+
+        wxCommandEvent event(wxEVT_COMMAND_MENU_SELECTED, ID_APPLYFILTER);
+        GetParent()->GetEventHandler()->ProcessEvent(event);
+
+        *m_AppliedCalled = false;
+      }
+    }
+    // don't block forced close in this case
+  }
+
+  return QueryCancelDlg::SyncAndQueryCancel(showDialog);
 }

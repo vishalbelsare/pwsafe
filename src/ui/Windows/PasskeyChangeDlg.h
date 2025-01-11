@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -28,7 +28,7 @@ public:
   CSecString m_newpasskey;
   CSecString m_confirmnew;
 
-  BOOL m_btnShowCombination;
+  BOOL m_btnShowMasterPassword;
   //}}AFX_DATA
 
   // Overrides
@@ -48,7 +48,7 @@ protected:
   afx_msg void OnPasskeySetfocus();
   afx_msg void OnNewPasskeySetfocus();
   afx_msg void OnConfirmNewSetfocus();
-  afx_msg void OnShowCombination();
+  afx_msg void OnShowMasterPassword();
   afx_msg void OnVirtualKeyboard();
   afx_msg LRESULT OnInsertBuffer(WPARAM, LPARAM);
   afx_msg void OnYubikey2Btn();

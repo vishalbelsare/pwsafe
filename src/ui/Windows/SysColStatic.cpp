@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -10,7 +10,7 @@
 /*
 This entire file was copied from
 http://www.codeguru.com/staticctrl/syscol_static.shtml
-and was written by Pål K. Tønder 
+and was written by PÃ¥l K. TÃ¸nder
 */
 
 #include "stdafx.h"

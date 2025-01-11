@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -71,19 +71,20 @@ class PropertiesDlg : public wxDialog
   DECLARE_EVENT_TABLE()
 
 public:
-  /// Constructors
-  PropertiesDlg(wxWindow* parent, const PWScore &core,
+  
+  static PropertiesDlg* Create(wxWindow *parent, const PWScore &core,
               wxWindowID id = SYMBOL_PROPERTIESDLG_IDNAME,
               const wxString& caption = SYMBOL_PROPERTIESDLG_TITLE,
               const wxPoint& pos = SYMBOL_PROPERTIESDLG_POSITION,
               const wxSize& size = SYMBOL_PROPERTIESDLG_SIZE,
               long style = SYMBOL_PROPERTIESDLG_STYLE );
-
-  /// Creation
-  bool Create( wxWindow* parent, wxWindowID id = SYMBOL_PROPERTIESDLG_IDNAME, const wxString& caption = SYMBOL_PROPERTIESDLG_TITLE, const wxPoint& pos = SYMBOL_PROPERTIESDLG_POSITION, const wxSize& size = SYMBOL_PROPERTIESDLG_SIZE, long style = SYMBOL_PROPERTIESDLG_STYLE );
-
   /// Destructor
-  ~PropertiesDlg();
+  ~PropertiesDlg() = default;
+protected:
+  /// Constructors
+  PropertiesDlg(wxWindow *parent, const PWScore &core,
+              wxWindowID id, const wxString& caption,
+              const wxPoint& pos, const wxSize& size, long style);
 
   /// Initialises member variables
   void Init();
@@ -93,8 +94,8 @@ public:
 
 ////@begin PropertiesDlg event handler declarations
 
-  /// wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_OK
-  void OnOkClick(wxCommandEvent& evt);
+  /// wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_CLOSE
+  void OnCloseClick(wxCommandEvent& evt);
 
   /// wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_CHANGE_NAME
   void OnEditName(wxCommandEvent& evt);
@@ -103,7 +104,7 @@ public:
   void OnEditDescription(wxCommandEvent& evt);
 
 ////@end PropertiesDlg event handler declarations
-
+public:
 ////@begin PropertiesDlg member function declarations
 
   wxString GetDatabase() const { return m_database ; }
@@ -168,6 +169,9 @@ private:
   StringX m_NewDbName;
   StringX m_NewDbDescription;
   const PWScore &m_core;
+  
+  void DoEditName();
+  void DoEditDescription();
 };
 
 #endif // _PROPERTIESDLG_H_

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -25,6 +25,7 @@
 #include <wx/statusbr.h>
 #include <wx/treebase.h> // for wxTreeItemId
 #include <wx/settings.h>
+#include <wx/modalhook.h>
 
 #include "core/PWScore.h"
 #include "core/PWSFilters.h"
@@ -35,6 +36,7 @@
 #include "wxUtilities.h"
 #include "DnDFile.h"
 #include "DragBarCtrl.h"
+#include "TimedTaskChain.h"
 
 #include <tuple>
 #include <vector>
@@ -120,6 +122,7 @@ class DnDFile;
 #define ID_RESTORE 10059
 #define ID_PWDPOLSM 10215
 #define ID_GENERATEPASSWORD 10330
+#define ID_SETDATABASEID 10500
 #define ID_YUBIKEY_MNG 10010
 #define ID_LANGUAGEMENU 10011
 #define ID_VISITWEBSITE 10012
@@ -185,6 +188,7 @@ enum {
   ID_LANGUAGE_POLISH,
   ID_LANGUAGE_RUSSIAN,
   ID_LANGUAGE_SPANISH,
+  ID_LANGUAGE_SLOVENIAN,
   ID_LANGUAGE_SWEDISH,
   ID_LANGUAGE_END
 };
@@ -199,7 +203,7 @@ enum {
  * PasswordSafeFrame class declaration
  */
 
-class PasswordSafeFrame : public wxFrame, public Observer
+class PasswordSafeFrame : public wxFrame, public Observer, public wxModalDialogHook
 {
     DECLARE_CLASS( PasswordSafeFrame )
     DECLARE_EVENT_TABLE()
@@ -227,6 +231,9 @@ public:
 
   ItemList::size_type GetNumEntries() const {return m_core.GetNumEntries();}
 
+  bool CanCloseDialogs() const;
+  void CloseDB(std::function<void(bool)> callback);
+  
   /* Observer Interface Implementation */
 
   /// Implements Observer::DatabaseModified(bool)
@@ -610,7 +617,9 @@ public:
   void HideSearchBar();
 
   bool IsClosed() const;
-  
+  bool IsLocked() const;
+  /// Get top dialog (shown or hidden)
+  wxTopLevelWindow* GetTopWindow() const;
   static void DisplayFileWriteError(int rc, const StringX &fname);
 
 ////@begin PasswordSafeFrame member variables
@@ -662,13 +671,14 @@ private:
   void CreateSearchBar();
   wxAuiPaneInfo& GetSearchBarPane();
   PasswordSafeSearch* GetSearchBar() { return m_search; };
+  void UpdateSearchBarVisibility();
 
   void CreateStatusBar();
 
   long GetEventRUEIndex(const wxCommandEvent& evt) const;
   bool IsRUEEvent(const wxCommandEvent& evt) const;
   void RebuildGUI(const int iView = iBothViews);
-  void SaveSettings() const;
+  void SaveSettings();
   void LockDb();
   void TryIconize(int nAttempts = 5);
   bool ChangeMode(bool promptUser);
@@ -695,7 +705,8 @@ private:
   void DoBrowse(CItemData &item, bool bAutotype);
   void DoRun(CItemData &item);
   void DoEmail(CItemData &item);
-  void DoPasswordSubset(CItemData &item);
+  void DoPasswordSubset(CItemData *item);
+  void DoEditBase();
 
   // These 3 fns are called via wxEvtHandler::CallAfter in sequence for autotyping
   void MinimizeOrHideBeforeAutotyping();
@@ -717,18 +728,49 @@ private:
   void UpdateLastClipboardAction(const CItemData::FieldType field);
 
   void ChangeFontPreference(const PWSprefs::StringPrefs fontPreference);
+  
+  enum CloseFlags { CLOSE_NORMAL = 0, CLOSE_FORCED = 1, LEAVE_MAIN = 2, HIDE_ON_VETO = 4 };
+  void CloseAllWindows(TimedTaskChain* taskChain, CloseFlags flags, std::function<void(bool success)> onFinish);
+  bool IsCloseInProgress() const;
+
+  void SaveLayoutPreferences();
+  bool LoadLayoutPreferences();
+
+  void DoCreateShortcut(CItemData* item);
+  void DoDeleteItems(bool askConfirmation, bool isGroup);
+  void DoImportXML(wxString filename);
+  void DoImportText(wxString filename);
+  void DoImportKeePass(wxString filename);
+  void DoManageFilters();
+  void DoPwdPolsMClick();
+  void DoEditFilter();
+  void DoGeneratePassword();
+  void DoChangePassword();
+  void DoPasswordQRCode(CItemData* item);
+  void DoPropertiesClick();
+  void DoMergeAnotherSafe(wxString filename);
+  void DoRestoreSafe();
+  void DoChangeMode();
+  void DoPreferencesClick();
+  void DoSynchronize(wxString filename);
+  void DoCompare();
+  void DoViewAttachment(CItemData* item);
+
+#ifndef NO_YUBI
+  void DoYubikeyMngClick();
+#endif /* NO_YUBI */  
 
   PWScore &m_core;
   ViewType m_currentView;
   TreeSortType m_currentSort;
   PasswordSafeSearch* m_search;
   SystemTray* m_sysTray;
-  bool m_exitFromMenu;
   bool m_bRestoredDBUnsaved;
   CRUEList m_RUEList;
   GuiInfo* m_guiInfo;
   bool m_bTSUpdated;
   wxString m_savedDBPrefs;
+
   enum {iListOnly = 1, iTreeOnly = 2, iBothViews = 3};
 
   /*
@@ -751,6 +793,13 @@ private:
   // Current filter
   st_filters &CurrentFilter() {return m_FilterManager.m_currentfilter;}
   void ResetFilters();
+  
+  virtual int Enter(wxDialog* dialog) override;
+  virtual void Exit(wxDialog* dialog) override;
+  
+  std::vector<wxTopLevelWindow*> GetTopLevelWindowsList() const;
+  void HideTopLevelWindows();
+  void ShowHiddenWindows(bool raise);
   
   // Global Filters
   PWSFilters m_MapAllFilters;     // Includes DB and temporary (added, imported, autoloaded etc.)
@@ -775,6 +824,12 @@ private:
   wxAuiManager m_AuiManager;
   wxAuiToolBar* m_Toolbar;
   DragBarCtrl* m_Dragbar;
+
+  // top-level windows that we hide while locking the UI
+  std::vector<wxTopLevelWindow*> m_hiddenWindows;
+  std::vector<wxDialog*> m_shownDialogs;
+  wxWindowDisabler* m_closeDisabler = nullptr; // disable all windows while waiting for close
+  wxTopLevelWindow* m_pengingCloseWindow = nullptr; // current window that processing close event
 };
 
 BEGIN_DECLARE_EVENT_TYPES()

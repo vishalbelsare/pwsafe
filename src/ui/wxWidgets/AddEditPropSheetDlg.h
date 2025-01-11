@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -66,6 +66,7 @@ class wxBoxSizer;
 #define ID_BUTTON_SHOWHIDE 10090
 #define ID_BUTTON_GENERATE 10097
 #define ID_TEXTCTRL_PASSWORD2 10091
+#define ID_STATICTEXT_PASSWORD2 10191
 #define ID_TEXTCTRL_URL 10092
 #define ID_GO_BTN 10093
 #define ID_TEXTCTRL_EMAIL 10100
@@ -135,9 +136,8 @@ public:
     VIEW
   }; // to tweak UI, mainly
 
-  /// Constructor
   // item is nullptr for ADD, otherwise its values are retrieved and displayed
-  AddEditPropSheetDlg(wxWindow *parent, PWScore &core,
+  static AddEditPropSheetDlg* Create(wxWindow *parent, PWScore &core,
                       SheetType type, const CItemData *item = nullptr,
                       const wxString &selectedGroup = wxEmptyString,
                       wxWindowID id = SYMBOL_ADDEDITPROPSHEETDLG_IDNAME,
@@ -146,13 +146,19 @@ public:
                       const wxSize &size = SYMBOL_ADDEDITPROPSHEETDLG_SIZE,
                       long style = SYMBOL_ADDEDITPROPSHEETDLG_STYLE);
 
-  /// Creation
-  bool Create(wxWindow *parent, wxWindowID id = SYMBOL_ADDEDITPROPSHEETDLG_IDNAME, const wxString &caption = SYMBOL_AUTOPROPSHEETDLG_TITLE, const wxPoint &pos = SYMBOL_ADDEDITPROPSHEETDLG_POSITION, const wxSize &size = SYMBOL_ADDEDITPROPSHEETDLG_SIZE, long style = SYMBOL_ADDEDITPROPSHEETDLG_STYLE);
-
   /// Destructor
-  ~AddEditPropSheetDlg();
+  ~AddEditPropSheetDlg() = default;
+protected:
+  /// Constructor
+  AddEditPropSheetDlg(wxWindow *parent, PWScore &core,
+                      SheetType type, const CItemData *item, const wxString &selectedGroup,
+                      wxWindowID id,const wxString &caption, 
+                      const wxPoint &pos, const wxSize &size, long style);
 
   ////@begin AddEditPropSheetDlg event handler declarations
+
+  /// wxEVT_TEXT event handler for ID_TEXTCTRL_PASSWORD and ID_TEXTCTRL_PASSWORD2
+  void OnPasswordChanged(wxCommandEvent &event);
 
   /// wxEVT_COMMAND_BUTTON_CLICKED event handler for ID_BUTTON_SHOWHIDE
   void OnShowHideClick(wxCommandEvent &event);
@@ -224,6 +230,12 @@ public:
   
   /// wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_OK
   void OnOk(wxCommandEvent &event);
+  
+  /// wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_CANCEL
+  void OnCancel(wxCommandEvent &event);
+  
+  /// wxEVT_CLOSE event handler
+  void OnClose(wxCloseEvent &event);
 
   /// wxEVT_SPINCTRL event handler for ID_SPINCTRL5, ID_SPINCTRL6, ID_SPINCTRL7, ID_SPINCTRL8
   void OnAtLeastPasswordChars(wxSpinEvent &event);
@@ -246,9 +258,6 @@ public:
   ////@begin AddEditPropSheetDlg member variables
 
 private:
-  // Initialises member variables
-  void Init();
-
   // Creates the controls and sizers
   void CreateControls();
 
@@ -276,24 +285,33 @@ private:
   wxString GetMimeTypeExtension(const stringT &mimeTypeDescription);
   void EnableImport();
   void DisableImport();
+  void DisableAttachmentControls();
 
   // Applies font preferences to corresponding controls
   void ApplyFontPreferences();
 
   void ItemFieldsToPropSheet();
   void SetupDCAComboBoxes(wxComboBox *pcbox, short &iDCA, bool isShift);
-  void UpdateExpTimes();        // entry -> controls
+  void InitializeExpTimes();        // entry -> controls
   void SetXTime(wxObject *src); // sync controls + controls -> entry
+
+  // Today returns time part == 0
+  wxDateTime TodayPlusInterval(const int interval) const { return wxDateTime::Today().Add(wxDateSpan(0, 0, 0, interval)); };
+  wxDateTime NormalizeExpDate(const wxDateTime &xdt) const { return xdt.GetDateOnly(); }
+  int IntervalFromDate(const wxDateTime &xdt) const { return xdt.Subtract(wxDateTime::Today()).GetDays(); }
+  wxString makeExpiryString();
+
   void UpdatePWPolicyControls(const PWPolicy &pwp);
   void EnablePWPolicyControls(bool enable);
-  PWPolicy GetPWPolicyFromUI();
-  PWPolicy GetSelectedPWPolicy();
+  PWPolicy GetPWPolicyFromUI() const;
+  PWPolicy GetSelectedPWPolicy() const;
   bool CheckPWPolicyFromUI();
   void ShowPWPSpinners(bool show);
   void EnableNonHexCBs(bool enable);
-  void UpdatePasswordTextCtrl(wxTextCtrl* &textCtrl, const wxString value, wxTextCtrl* before, const int id = ID_TEXTCTRL_PASSWORD, const int style = 0);
   void ShowPassword();
   void HidePassword();
+  void UpdatePasswordConfirmationIcons(bool show = true);
+  void UpdatePasswordConfirmationAsterisk(bool show = true);
   void ShowAlias();
   void RemoveAlias();
   int GetRequiredPWLength() const;
@@ -301,24 +319,62 @@ private:
   bool ValidateBasicData();
   bool ValidatePasswordPolicy();
   bool IsGroupUsernameTitleCombinationUnique();
+  bool SyncAndQueryCancel(bool showDialog);
+  
+  enum Changes : uint32_t {
+    None = 0,
+    Group = 1u,
+    Title = 1u << 1,
+    User = 1u << 2,
+    Notes = 1u << 3,
+    Url = 1u << 4,
+    Email = 1u << 5,
+    Autotype = 1u << 6,
+    RunCommand = 1u << 7,
+    History = 1u << 8,
+    Symbols = 1u << 9,
+    DCA = 1u << 10,
+    ShiftDCA = 1u << 11,
+    XTime = 1u << 12,
+    XTimeInt = 1u << 13,
+    Password = 1u << 14,
+    Policy = 1u << 15,
+    Attachment = 1u << 16,
+    XTimeNever = 1u << 17,
+  };
 
+  enum AliasChanges {
+    NoChange,
+    Alias2Normal,
+    AliasRebased,
+    Normal2Alias,
+  };
+  
+  uint32_t GetChanges() const;
+  
   Command* NewAddEntryCommand(bool bNewCTime = true);
   Command* NewEditEntryCommand();
+  
+  void DoAliasButtonClick();
+  
+  StringX PreparePasswordHistory() const;
 
   // Tab: "Basic"
-  wxPanel *m_BasicPanel;
-  wxGridBagSizer *m_BasicSizer;
-  wxComboBox *m_BasicGroupNamesCtrl;
-  wxTextCtrl *m_BasicTitleTextCtrl;
-  wxTextCtrl *m_BasicUsernameTextCtrl;
-  wxTextCtrl *m_BasicPasswordTextCtrl;
-  wxStaticText *m_BasicPasswordTextLabel;
-  wxButton *m_BasicShowHideCtrl;
-  wxTextCtrl *m_BasicPasswordConfirmationTextCtrl;
-  wxStaticText *m_BasicPasswordConfirmationTextLabel;
-  wxTextCtrl *m_BasicUrlTextCtrl;
-  wxTextCtrl *m_BasicEmailTextCtrl;
-  wxTextCtrl *m_BasicNotesTextCtrl;
+  wxPanel *m_BasicPanel = nullptr;
+  wxGridBagSizer *m_BasicSizer = nullptr;
+  wxComboBox *m_BasicGroupNamesCtrl = nullptr;
+  wxTextCtrl *m_BasicTitleTextCtrl = nullptr;
+  wxTextCtrl *m_BasicUsernameTextCtrl = nullptr;
+  wxTextCtrl *m_BasicPasswordTextCtrl = nullptr;
+  wxStaticText *m_BasicPasswordTextLabel = nullptr;
+  wxStaticBitmap *m_BasicPasswordBitmap = nullptr;
+  wxBitmapButton *m_BasicShowHideCtrl = nullptr;
+  wxTextCtrl *m_BasicPasswordConfirmationTextCtrl = nullptr;
+  wxStaticText *m_BasicPasswordConfirmationTextLabel = nullptr;
+  wxStaticBitmap *m_BasicPasswordConfirmationBitmap = nullptr;
+  wxTextCtrl *m_BasicUrlTextCtrl = nullptr;
+  wxTextCtrl *m_BasicEmailTextCtrl = nullptr;
+  wxTextCtrl *m_BasicNotesTextCtrl = nullptr;
 
   wxString m_Title;
   wxString m_User;
@@ -329,12 +385,14 @@ private:
   StringX m_Password;
   bool m_IsPasswordHidden;
 
+  AliasChanges m_AliasChange = AliasChanges::NoChange;
+
   // Tab: "Additional"
-  wxPanel *m_AdditionalPanel;
-  wxComboBox *m_AdditionalDoubleClickActionCtrl;
-  wxComboBox *m_AdditionalShiftDoubleClickActionCtrl;
-  wxSpinCtrl *m_AdditionalMaxPasswordHistoryCtrl;
-  wxGrid *m_AdditionalPasswordHistoryGrid;
+  wxPanel *m_AdditionalPanel = nullptr;
+  wxComboBox *m_AdditionalDoubleClickActionCtrl = nullptr;
+  wxComboBox *m_AdditionalShiftDoubleClickActionCtrl = nullptr;
+  wxSpinCtrl *m_AdditionalMaxPasswordHistoryCtrl = nullptr;
+  wxGrid *m_AdditionalPasswordHistoryGrid = nullptr;
 
   wxString m_Autotype;
   wxString m_RunCommand;
@@ -345,46 +403,50 @@ private:
   short m_ShiftDoubleClickAction;
 
   // Tab: "Dates and Times"
-  wxRadioButton *m_DatesTimesExpireOnCtrl;
-  wxDatePickerCtrl *m_DatesTimesExpiryDateCtrl;
-  wxRadioButton *m_DatesTimesExpireInCtrl;
-  wxSpinCtrl *m_DatesTimesExpiryTimeCtrl;
-  wxCheckBox *m_DatesTimesRecurringExpiryCtrl;
-  wxRadioButton *m_DatesTimesNeverExpireCtrl;
+  wxRadioButton *m_DatesTimesExpireOnCtrl = nullptr;
+  wxDatePickerCtrl *m_DatesTimesExpiryDateCtrl = nullptr;
+  wxRadioButton *m_DatesTimesExpireInCtrl = nullptr;
+  wxSpinCtrl *m_DatesTimesExpiryTimeCtrl = nullptr;
+  wxCheckBox *m_DatesTimesRecurringExpiryCtrl = nullptr;
+  wxRadioButton *m_DatesTimesNeverExpireCtrl = nullptr;
+  wxStaticText *m_DatesTimesCurrentCtrl = nullptr;
+  wxStaticText *m_DatesTimesStaticTextDays = nullptr;
 
   wxString m_RMTime; // Any field modification time
   wxString m_AccessTime;
   wxString m_CreationTime;
-  wxString m_CurrentExpirationTime;
+  wxString m_OriginalExpirationStr;
   wxString m_ModificationTime;
+  wxRadioButton *m_OriginalButton;
   bool m_Recurring;
-  wxString m_ExpirationTime;
-  int m_ExpirationTimeInterval; // Password expiration interval in days
-  time_t m_tttExpirationTime;   // Password expiration date in time_t
+  bool m_OriginalRecurring;
+  time_t m_OriginalDayttt;
+  bool m_FirstInClick;
+  int m_ExpirationTimeInterval = 0; // Password expiration interval in days
 
   // Tab: "Password Policy"
-  wxPanel *m_PasswordPolicyPanel;
-  wxCheckBox *m_PasswordPolicyUseDatabaseCtrl;
-  wxComboBox *m_PasswordPolicyNamesCtrl;
-  wxStaticText *m_PasswordPolicyPasswordLengthText;
-  wxSpinCtrl *m_PasswordPolicyPasswordLengthCtrl;
-  wxGridSizer *m_PasswordPolicySizer;
-  wxCheckBox *m_PasswordPolicyUseLowerCaseCtrl;
-  wxBoxSizer *m_PasswordPolicyLowerCaseMinSizer;
-  wxSpinCtrl *m_PasswordPolicyLowerCaseMinCtrl;
-  wxCheckBox *m_PasswordPolicyUseUpperCaseCtrl;
-  wxBoxSizer *m_PasswordPolicyUpperCaseMinSizer;
-  wxSpinCtrl *m_PasswordPolicyUpperCaseMinCtrl;
-  wxCheckBox *m_PasswordPolicyUseDigitsCtrl;
-  wxBoxSizer *m_PasswordPolicyDigitsMinSizer;
-  wxSpinCtrl *m_PasswordPolicyDigitsMinCtrl;
-  wxCheckBox *m_PasswordPolicyUseSymbolsCtrl;
-  wxBoxSizer *m_PasswordPolicySymbolsMinSizer;
-  wxSpinCtrl *m_PasswordPolicySymbolsMinCtrl;
-  wxTextCtrl *m_PasswordPolicyOwnSymbolsTextCtrl;
-  wxCheckBox *m_PasswordPolicyUseEasyCtrl;
-  wxCheckBox *m_PasswordPolicyUsePronounceableCtrl;
-  wxCheckBox *m_PasswordPolicyUseHexadecimalOnlyCtrl;
+  wxPanel *m_PasswordPolicyPanel = nullptr;
+  wxCheckBox *m_PasswordPolicyUseDatabaseCtrl = nullptr;
+  wxComboBox *m_PasswordPolicyNamesCtrl = nullptr;
+  wxStaticText *m_PasswordPolicyPasswordLengthText = nullptr;
+  wxSpinCtrl *m_PasswordPolicyPasswordLengthCtrl = nullptr;
+  wxGridSizer *m_PasswordPolicySizer = nullptr;
+  wxCheckBox *m_PasswordPolicyUseLowerCaseCtrl = nullptr;
+  wxBoxSizer *m_PasswordPolicyLowerCaseMinSizer = nullptr;
+  wxSpinCtrl *m_PasswordPolicyLowerCaseMinCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUseUpperCaseCtrl = nullptr;
+  wxBoxSizer *m_PasswordPolicyUpperCaseMinSizer = nullptr;
+  wxSpinCtrl *m_PasswordPolicyUpperCaseMinCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUseDigitsCtrl = nullptr;
+  wxBoxSizer *m_PasswordPolicyDigitsMinSizer = nullptr;
+  wxSpinCtrl *m_PasswordPolicyDigitsMinCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUseSymbolsCtrl = nullptr;
+  wxBoxSizer *m_PasswordPolicySymbolsMinSizer = nullptr;
+  wxSpinCtrl *m_PasswordPolicySymbolsMinCtrl = nullptr;
+  wxTextCtrl *m_PasswordPolicyOwnSymbolsTextCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUseEasyCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUsePronounceableCtrl = nullptr;
+  wxCheckBox *m_PasswordPolicyUseHexadecimalOnlyCtrl = nullptr;
 
   wxString m_Symbols;
 
@@ -397,32 +459,26 @@ private:
   //*)
 
   //(*Identifiers(AttachmentTab)
-  static const wxWindowID ID_BUTTON_IMPORT;
-  static const wxWindowID ID_BUTTON_EXPORT;
-  static const wxWindowID ID_BUTTON_REMOVE;
-  static const wxWindowID ID_TEXTCTRL2;
-  static const wxWindowID ID_STATICTEXT4;
-  static const wxWindowID ID_STATICTEXT5;
-  static const wxWindowID ID_STATICTEXT6;
-  static const wxWindowID ID_STATICTEXT8;
-  static const wxWindowID ID_STATICTEXT10;
+  wxWindowID ID_BUTTON_IMPORT;
+  wxWindowID ID_BUTTON_EXPORT;
+  wxWindowID ID_BUTTON_REMOVE;
   //*)
 
   //(*Declarations(AttachmentTab)
-  wxStaticBoxSizer *StaticBoxSizerPreview;
-  wxPanel *m_AttachmentPanel;
-  ImagePanel *m_AttachmentImagePanel;
-  wxButton *m_AttachmentButtonImport;
-  wxButton *m_AttachmentButtonExport;
-  wxButton *m_AttachmentButtonRemove;
-  wxStaticText *m_AttachmentFilePath;
-  wxTextCtrl *m_AttachmentTitle;
-  wxStaticText *m_AttachmentMediaType;
-  wxStaticText *m_AttachmentCreationDate;
-  wxStaticText *m_AttachmentFileSize;
-  wxStaticText *m_AttachmentFileCreationDate;
-  wxStaticText *m_AttachmentFileLastModifiedDate;
-  wxStaticText *m_AttachmentPreviewStatus;
+  wxStaticBoxSizer *StaticBoxSizerPreview = nullptr;
+  wxPanel *m_AttachmentPanel = nullptr;
+  ImagePanel *m_AttachmentImagePanel = nullptr;
+  wxButton *m_AttachmentButtonImport = nullptr;
+  wxButton *m_AttachmentButtonExport = nullptr;
+  wxButton *m_AttachmentButtonRemove = nullptr;
+  wxStaticText *m_AttachmentFilePath = nullptr;
+  wxTextCtrl *m_AttachmentTitle = nullptr;
+  wxStaticText *m_AttachmentMediaType = nullptr;
+  wxStaticText *m_AttachmentCreationDate = nullptr;
+  wxStaticText *m_AttachmentFileSize = nullptr;
+  wxStaticText *m_AttachmentFileCreationDate = nullptr;
+  wxStaticText *m_AttachmentFileLastModifiedDate = nullptr;
+  wxStaticText *m_AttachmentPreviewStatus = nullptr;
   //*)
   ////@end AddEditPropSheetDlg member variables
 
@@ -432,6 +488,10 @@ private:
   SheetType m_Type;
   CItemData m_Item;
   CItemAtt  m_ItemAttachment;
+
+  wxBitmap bitmapCheckmarkPlaceholder;
+  wxBitmap bitmapCheckmarkGreen;
+  wxBitmap bitmapCheckmarkGray;
 };
 
 #endif // _ADDEDITPROPSHEETDLG_H_

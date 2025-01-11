@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -298,7 +298,7 @@ void DBPrefsCommand::Undo()
 // ------------------------------------------------
 
 DBPolicyNamesCommand::DBPolicyNamesCommand(CommandInterface *pcomInt,
-                                           PSWDPolicyMap &MapPSWDPLC,
+                                           const PSWDPolicyMap &MapPSWDPLC,
                                            Function function)
   : Command(pcomInt), m_NewMapPSWDPLC(MapPSWDPLC), m_function(function),
   m_bSingleAdd(false)
@@ -307,8 +307,8 @@ DBPolicyNamesCommand::DBPolicyNamesCommand(CommandInterface *pcomInt,
 }
 
 DBPolicyNamesCommand::DBPolicyNamesCommand(CommandInterface *pcomInt,
-                                           StringX &sxPolicyName,
-                                           PWPolicy &st_pp)
+                                           const StringX &sxPolicyName,
+                                           const PWPolicy &st_pp)
   : Command(pcomInt), m_sxPolicyName(sxPolicyName), m_st_ppp(st_pp),
   m_bSingleAdd(true)
 {
@@ -661,8 +661,8 @@ int DeleteEntryCommand::Execute()
     m_pcomInt->NotifyGUINeedsUpdating(UpdateGUICommand::GUI_DELETE_ENTRY,
                                       m_ci.GetUUID());
   }
-  // XXX if entry has an attachment, find and store it in m_att for undo.
-  // XXX as well as removing it / decrementing its refcount
+  // If entry has an attachment, find and store it in m_att for undo
+  // as well as removing it / decrementing its refcount
   if (m_ci.HasAttRef() && m_pcomInt->HasAtt(m_ci.GetAttUUID())) {
     auto att = m_pcomInt->GetAtt(m_ci.GetAttUUID());
 

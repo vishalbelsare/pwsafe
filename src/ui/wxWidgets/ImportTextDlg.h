@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -30,11 +30,12 @@ class ImportTextDlg : public wxDialog
   DECLARE_EVENT_TABLE()
 
 public:
-  ImportTextDlg(wxWindow* parent, const wxString filename = "");
-  virtual ~ImportTextDlg();
-
+  static ImportTextDlg* Create(wxWindow *parent, const wxString& filename = wxEmptyString);
+  virtual ~ImportTextDlg() = default;
+protected:
+  ImportTextDlg(wxWindow *parent, const wxString& filename);
   void CreateControls();
-
+public:
   wxString filepath;
   
   bool delimiterComma;
@@ -51,7 +52,6 @@ public:
   bool importPasswordsOnly;
   
   TCHAR FieldSeparator() const;
-  
 private:
   wxCollapsiblePane* CreateParsingOptionsPane(wxBoxSizer* dlgSizer);
   wxCollapsiblePane* CreateImportOptionsPane(wxBoxSizer* dlgSizer);

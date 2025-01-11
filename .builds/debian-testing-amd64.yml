@@ -5,10 +5,11 @@ triggers:
       condition: failure
       to: build@pwsafe.org
 sources: 
-- https://github.com/pwsafe/pwsafe.git
+    - https://git.sr.ht/~ronys/pwsafe
 tasks:
     - setup: |
         sudo apt-get update
+        echo '* libraries/restart-without-asking boolean true' | sudo debconf-set-selections
         sudo pwsafe/Misc/setup-linux-dev-env.sh
         cd pwsafe
         mkdir build build-dbg

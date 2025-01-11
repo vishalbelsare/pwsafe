@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -47,18 +47,19 @@ BEGIN_EVENT_TABLE( FieldSelectionDlg, wxDialog )
   EVT_COMMAND(wxID_ANY, EVT_RELAYOUT_DLG, FieldSelectionDlg::OnRelayoutDlg)
 END_EVENT_TABLE()
 
-FieldSelectionDlg::FieldSelectionDlg(wxWindow* parent,
-                                     const CItemData::FieldType* available, size_t navail,
+FieldSelectionDlg::FieldSelectionDlg(wxWindow *parent, const CItemData::FieldType* available, size_t navail,
                                      const CItemData::FieldType* mandatory, size_t nmandatory,
                                      FieldSet& userSelection,
                                      const wxString& operation,
-                                     const wxString& dlgtitle/* = wxEmptyString*/,
-                                     const wxString& dlgText/* = wxEmptyString*/,
-                                     const wxString& vMsg/* = wxEmptyString*/, 
-                                     const wxString& vTitle/* = wxEmptyString*/)
+                                     const wxString& dlgtitle,
+                                     const wxString& dlgText,
+                                     const wxString& vMsg, 
+                                     const wxString& vTitle)
                                       :wxDialog(parent, wxID_ANY, FieldSelTitle(dlgtitle, operation),
                                                 wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER)
 {
+  wxASSERT(!parent || parent->IsTopLevel());
+
   wxBoxSizer* dlgSizer = new wxBoxSizer(wxVERTICAL);
   
   dlgSizer->AddSpacer(TopMargin);
@@ -80,6 +81,16 @@ FieldSelectionDlg::FieldSelectionDlg(wxWindow* parent,
     dlgSizer->Add(btnSizer, wxSizerFlags(0).Expand().Border(wxLEFT|wxRIGHT, SideMargin));
   dlgSizer->AddSpacer(BottomMargin);
   SetSizer(dlgSizer);
+}
+
+FieldSelectionDlg* FieldSelectionDlg::Create(wxWindow *parent, const CItemData::FieldType* available, size_t navail,
+                                     const CItemData::FieldType* mandatory, size_t nmandatory,
+                                     FieldSet& userSelection, const wxString& operation,
+                                     const wxString& dlgtitle, const wxString& dlgText, 
+                                     const wxString& vMsg, const wxString& vTitle)
+{
+  return new FieldSelectionDlg(parent, available, navail, mandatory, nmandatory,
+                              userSelection, operation, dlgtitle, dlgText, vMsg, vTitle);
 }
 
 void FieldSelectionDlg::OnInitDialog(wxInitDialogEvent& evt)

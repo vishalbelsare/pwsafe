@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -48,35 +48,20 @@ IMPLEMENT_CLASS( CreateShortcutDlg, wxDialog )
 BEGIN_EVENT_TABLE( CreateShortcutDlg, wxDialog )
 
   EVT_BUTTON( wxID_OK, CreateShortcutDlg::OnOk )
-
+  EVT_CLOSE( CreateShortcutDlg::OnClose )
+  EVT_BUTTON( wxID_CANCEL, CreateShortcutDlg::OnCancelClick )
 END_EVENT_TABLE()
 
 /*!
  * CreateShortcutDlg constructors
  */
 
-CreateShortcutDlg::CreateShortcutDlg(wxWindow* parent, PWScore &core, CItemData *base)
+CreateShortcutDlg::CreateShortcutDlg(wxWindow *parent, PWScore &core, CItemData *base)
 : m_Core(core), m_Base(base)
 {
   ASSERT(m_Base != nullptr);
-  Init();
-  Create(parent);
-}
+  wxASSERT(!parent || parent->IsTopLevel());
 
-/*!
- * CreateShortcutDlg destructor
- */
-
-CreateShortcutDlg::~CreateShortcutDlg()
-{
-}
-
-/*!
- * CreateShortcutDlg creator
- */
-
-bool CreateShortcutDlg::Create(wxWindow* parent)
-{
   SetExtraStyle(wxWS_EX_BLOCK_EVENTS);
   wxDialog::Create(parent, wxID_ANY, _("Create Shortcut"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER);
 
@@ -89,7 +74,11 @@ bool CreateShortcutDlg::Create(wxWindow* parent)
   SetValidators();
   UpdateControls();
   ItemFieldsToDialog();
-  return true;
+}
+
+CreateShortcutDlg* CreateShortcutDlg::Create(wxWindow *parent, PWScore &core, CItemData *base)
+{
+  return new CreateShortcutDlg(parent, core, base);
 }
 
 void CreateShortcutDlg::ItemFieldsToDialog()
@@ -124,7 +113,7 @@ void CreateShortcutDlg::ItemFieldsToDialog()
     m_BaseEntryTitle = stringx2std(m_Base->GetTitle());
     m_BaseEntryUsername = stringx2std(m_Base->GetUser());
 
-    m_ShortcutTitle = _("Shortcut to ") + m_BaseEntryTitle;
+    m_ShortcutTitle = GetDefaultShortcutTitle();
     m_ShortcutUsername = m_BaseEntryUsername;
 
     if (m_Base->IsGroupSet() && !(m_Base->GetGroup().empty())) {
@@ -149,9 +138,10 @@ void CreateShortcutDlg::ItemFieldsToDialog()
     m_ShortcutTitle = wxEmptyString;
     m_ShortcutUsername = wxEmptyString;
 
-    m_BaseEntryGroup = _("N/A");
-    m_BaseEntryTitle = _("N/A");
-    m_BaseEntryUsername = _("N/A");
+    // set base values to empty too/ to siplify change detection
+    m_BaseEntryGroup = wxEmptyString;
+    m_BaseEntryTitle = wxEmptyString;
+    m_BaseEntryUsername = wxEmptyString;
   }
 }
 
@@ -176,20 +166,6 @@ void CreateShortcutDlg::UpdateControls()
 }
 
 /*!
- * Member initialisation
- */
-
-void CreateShortcutDlg::Init()
-{
-  m_ComboBoxShortcutGroup = nullptr;
-  m_TextCtrlShortcutTitle = nullptr;
-  m_TextCtrlShortcutUsername = nullptr;
-  m_StaticTextBaseEntryGroup = nullptr;
-  m_StaticTextBaseEntryTitle = nullptr;
-  m_StaticTextBaseEntryUsername = nullptr;
-}
-
-/*!
  * Control creation for CreateShortcutDlg
  */
 
@@ -197,7 +173,7 @@ void CreateShortcutDlg::CreateControls()
 {
   //(*Initialize(ShortcutsDialogDial
   auto BoxSizer1 = new wxBoxSizer(wxVERTICAL);
-  auto StaticText1 = new wxStaticText(this, wxID_ANY, _("Please enter the shortcut properties to the selected base entry."), wxDefaultPosition, wxDefaultSize, 0, _T("wxID_ANY"));
+  auto StaticText1 = new wxStaticText(this, wxID_ANY, _("Enter the shortcut properties to the selected base entry."), wxDefaultPosition, wxDefaultSize, 0, _T("wxID_ANY"));
   BoxSizer1->Add(StaticText1, 0, wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL, 10);
 
   auto StaticBoxSizer1 = new wxStaticBoxSizer(wxHORIZONTAL, this, _("Shortcut"));
@@ -298,6 +274,15 @@ void CreateShortcutDlg::OnOk(wxCommandEvent& WXUNUSED(event))
     if (!valid)
       return;
 
+    auto *commands = MultiCommands::Create(&m_Core);
+    auto shortcutGroup = tostringx(m_ShortcutGroup);
+
+    if (!shortcutGroup.empty() && m_Core.IsEmptyGroup(shortcutGroup)) { // The group is no longer empty if a new item is added
+      commands->Add(
+        DBEmptyGroupsCommand::Create(&m_Core, shortcutGroup, DBEmptyGroupsCommand::EG_DELETE)
+      );
+    }
+
     CItemData shortcut;
     shortcut.SetShortcut();
     shortcut.CreateUUID();
@@ -319,9 +304,46 @@ void CreateShortcutDlg::OnOk(wxCommandEvent& WXUNUSED(event))
     shortcut.SetXTime(time_t(0));
     shortcut.SetStatus(CItemData::ES_ADDED);
 
-    m_Core.Execute(
+    commands->Add(
       AddEntryCommand::Create(&m_Core, shortcut, m_Base->GetUUID())
+    );
+
+    m_Core.Execute(
+      commands
     );
   }
   EndModal(wxID_OK);
+}
+
+bool CreateShortcutDlg::SyncAndQueryCancel(bool showDialog) {
+  // when edit forbidden, allow cancel without additional checks
+  if (m_Core.IsReadOnly()) {
+    return true;
+  }
+  return QueryCancelDlg::SyncAndQueryCancel(showDialog);
+}
+
+uint32_t CreateShortcutDlg::GetChanges() const
+{
+  uint32_t changes = Changes::None;
+  if (m_ShortcutTitle != GetDefaultShortcutTitle()) {
+      changes |= Changes::Title;
+  }
+  if (m_ShortcutUsername != m_BaseEntryUsername) {
+    changes |= Changes::User;
+  }
+    
+  if (m_ShortcutGroup != m_BaseEntryGroup) {
+    changes |= Changes::Group;
+  }
+  return changes;
+}
+
+bool CreateShortcutDlg::IsChanged() const {
+  return GetChanges() != Changes::None;
+}
+
+wxString CreateShortcutDlg::GetDefaultShortcutTitle() const
+{
+  return _("Shortcut to ") + m_BaseEntryTitle;
 }

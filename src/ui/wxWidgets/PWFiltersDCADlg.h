@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -18,12 +18,12 @@
  */
 
 #include <wx/choice.h>
-#include <wx/dialog.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
 #include "core/PWSFilters.h"
 #include "core/PWSprefs.h"
+#include "QueryCancelDlg.h"
 
 /*!
  * Forward declarations
@@ -48,23 +48,19 @@
  * pwFiltersDCADlg class declaration
  */
 
-class pwFiltersDCADlg : public wxDialog
+class pwFiltersDCADlg : public QueryCancelDlg
 {
   DECLARE_CLASS(pwFiltersDCADlg)
   DECLARE_EVENT_TABLE()
 
 public:
+  static pwFiltersDCADlg* Create(wxWindow *parent, FieldType ftype, PWSMatch::MatchRule *rule, short *fdca);
+protected:
   /// Constructors
-  pwFiltersDCADlg(wxWindow* parent, FieldType ftype, PWSMatch::MatchRule &rule, short &fdca);
+  pwFiltersDCADlg(wxWindow *parent, FieldType ftype, PWSMatch::MatchRule *rule, short *fdca);
 
   /// Destructor
-  virtual ~pwFiltersDCADlg();
-
-  /// Creation
-  bool Create(wxWindow* parent);
-
-  /// Initialises member variables
-  void Init();
+  virtual ~pwFiltersDCADlg() = default;
 
   /// Creates the controls and sizers
   void CreateControls();
@@ -80,7 +76,7 @@ public:
 
 private:
 
-  void InitDialog();
+  void InitDialog() override;
   void SetValidators();
 
   stringT CurrentDefaultDCAuiString();
@@ -91,18 +87,20 @@ private:
   void OnSelectionChangeDCA(wxCommandEvent& event);
   //*)
 
+  bool IsChanged() const override;
+
   //(*Declarations(pwFiltersDCADlg)
-  wxComboBox* m_ComboBoxRule;
-  wxComboBox* m_ComboBoxDCA;
+  wxComboBox* m_ComboBoxRule = nullptr;
+  wxComboBox* m_ComboBoxDCA = nullptr;
   //*)
 
   const FieldType m_ftype;
-  int m_idx;
-  int m_idx_dca;
-  short m_fdca;
+  int m_idx = -1;
+  int m_idx_dca = -1;
+
   // Result parameter
-  PWSMatch::MatchRule *m_prule;
-  short *m_pfdca;
+  PWSMatch::MatchRule *m_prule = nullptr;
+  short *m_pfdca = nullptr;
 
   typedef struct dcaMapItem {
     int msgText;

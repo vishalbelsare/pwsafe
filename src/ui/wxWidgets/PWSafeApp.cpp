@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -33,6 +33,10 @@
 #include <wx/tokenzr.h>
 #include <wx/spinctrl.h>
 
+#if wxCHECK_VERSION(3, 1, 6)
+#include <wx/uilocale.h>
+#endif
+
 #if wxCHECK_VERSION(2,9,2)
 #include <wx/richmsgdlg.h>
 #endif
@@ -59,6 +63,9 @@
 #include "version.h"
 #include "wxMessages.h"
 #include "Clipboard.h"
+#ifndef NO_YUBI
+#include "YubiMixin.h"
+#endif
 
 #include <iostream> // currently for debugging
 #include <clocale>  // to get the locales specified by the environment 
@@ -128,6 +135,11 @@ static const wxCmdLineEntryDesc cmdLineDesc[] = {
   {wxCMD_LINE_OPTION, STR("g"), STR("config_file"),
    STR("use specified configuration file instead of default"),
    wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL},
+#ifndef NO_YUBI
+  {wxCMD_LINE_OPTION, nullptr, STR("yubi-polling-interval"),
+   STR("use specified polling interval (in ms) for YubiKey instead of default (900ms), or 0 to disable polling."),
+   wxCMD_LINE_VAL_NUMBER, wxCMD_LINE_PARAM_OPTIONAL},
+#endif
   {wxCMD_LINE_PARAM, nullptr, nullptr, STR("database"),
    wxCMD_LINE_VAL_STRING,
    (wxCMD_LINE_PARAM_OPTIONAL | wxCMD_LINE_PARAM_MULTIPLE)},
@@ -343,6 +355,10 @@ bool PWSafeApp::OnInit()
   bool cmd_user = cmdParser.Found(wxT("u"), &user);
   bool cmd_host = cmdParser.Found(wxT("h"), &host);
   bool cmd_cfg = cmdParser.Found(wxT("g"), &cfg_file);
+#ifndef NO_YUBI
+  long int yubi_polling_interval;
+  bool cmd_yubi_polling_interval = cmdParser.Found(wxT("yubi-polling-interval"), &yubi_polling_interval);
+#endif
   bool file_in_cmd = false;
   size_t count = cmdParser.GetParamCount();
   if (count == 1) {
@@ -401,6 +417,11 @@ bool PWSafeApp::OnInit()
   if (cmd_cfg) {
     PWSprefs::SetConfigFile(tostdstring(cfg_file));
   }
+#ifndef NO_YUBI
+  if (cmd_yubi_polling_interval) {
+    YubiMixin::SetPollingInterval(static_cast<int>(yubi_polling_interval));
+  }
+#endif
 
   m_core.SetReadOnly(cmd_ro);
   // OK to load prefs now
@@ -483,10 +504,9 @@ bool PWSafeApp::OnInit()
   if (!cmd_closed && !cmd_silent && !cmd_minimized) {
     // Get the file, r/w mode and password from user
     // Note that file may be new
-    SafeCombinationEntryDlg* initWindow = new SafeCombinationEntryDlg(nullptr, m_core);
+    DestroyWrapper<SafeCombinationEntryDlg> initWindowWrapper(nullptr, m_core);
+    SafeCombinationEntryDlg *initWindow = initWindowWrapper.Get();
     int returnValue = initWindow->ShowModal();
-
-    initWindow->Destroy();
 
     if (returnValue != wxID_OK) {
       return false;
@@ -548,6 +568,8 @@ bool PWSafeApp::OnInit()
   }
   if (PWSprefs::GetInstance()->GetPref(PWSprefs::UseSystemTray))
     m_frame->ShowTrayIcon();
+
+  m_frame->Register(); // register modal dialog hook
   return true;
 }
 
@@ -658,18 +680,51 @@ bool PWSafeApp::ActivateLanguage(wxLanguage language, bool tryOnly)
     const wxLanguageInfo *langInfo = nullptr;
     langInfo = wxLocale::GetLanguageInfo(language);
     if(langInfo) {
+
+#if defined(__WXMAC__)
+#if wxCHECK_VERSION(3, 2, 2)
+      // Some languages have multiple locale variations.  (e.g. en_US, en_GB, etc.)
+      // Just using the two letter languane identifier (e.g. en.UTF-8) does not work
+      // on macOS, there needs to be a region as well (e.g. en_US.UTF-8), not doing
+      // so causes some inconsistent results. Specifically, the date format seems to
+      // default to en_GB in WX but not in native macOS controls, such as the date picker.
+      wxString envString;
+      wxLocaleIdent sysLocaleId = wxUILocale::GetSystemLocaleId();
+      if (langInfo->CanonicalName == sysLocaleId.GetLanguage() && !sysLocaleId.GetRegion().empty()) {
+        envString = sysLocaleId.GetName();
+
+      } else if (!langInfo->CanonicalRef.empty()) {
+        envString = langInfo->CanonicalRef;
+      }
+      if (!envString.empty()) {
+        envString += ".UTF-8";
+        setlocale(LC_CTYPE, envString.c_str());
+        setlocale(LC_TIME, envString.c_str());
+      }
+#endif // wxCHECK_VERSION
+      // This value must be set for mac OS starting with version 11, but is no problem for earlier versions, see
+      // https://github.com/wxWidgets/wxWidgets/issues/19023
+      // https://docs.wxwidgets.org/3.2/classwx_locale.html
+      setlocale(LC_NUMERIC, "C");
+#else // __WXMAC__
       wxString envString = langInfo->CanonicalName + ".UTF-8";
       setlocale(LC_CTYPE, envString.c_str());
       setlocale(LC_TIME, envString.c_str());
-#if defined(__WXMAC__)
-      // This value must be set for mac OS starting with version 11, but is no problem for earlier versions, see
-      // https://trac.wxwidgets.org/ticket/19023
-      setlocale(LC_NUMERIC, "C");
-#endif
+#endif // __WXMAC__
+
     }
   }
   return bRes;
 }
+
+#ifdef __WXMAC__
+// On macOS, this enables file unlock and UI restore upon left-click of the dock icon.
+// Not to be confused with the system tray (menu bar) icon.
+void PWSafeApp::MacNewFile()
+{
+  GetPasswordSafeFrame()->UnlockSafe(true, false);
+}
+#endif // __WXMAC__
 
 /*!
  * Cleanup for PWSafeApp
@@ -680,7 +735,7 @@ int PWSafeApp::OnExit()
   m_idleTimer->Stop();
   recentDatabases().Save();
   PWSprefs *prefs = PWSprefs::GetInstance();
-  if (m_core.IsDbOpen()) {
+  if (m_core.IsDbFileSet()) {
     prefs->SetPref(PWSprefs::CurrentFile, m_core.GetCurFile());
     // Don't leave dangling locks!
     m_core.SafeUnlockCurFile();
@@ -723,10 +778,10 @@ void PWSafeApp::ConfigureIdleTimer()
 void PWSafeApp::OnIdleTimer(wxTimerEvent &evt)
 {
   if (evt.GetId() == IDLE_TIMER_ID && PWSprefs::GetInstance()->GetPref(PWSprefs::LockDBOnIdleTimeout)) {
-    if (m_frame != nullptr && !m_frame->GetCurrentSafe().IsEmpty()) {
+    if (m_frame != nullptr && !m_frame->IsClosed() && !m_frame->IsLocked()) {
       m_idleTimer->Stop(); // Stop as with modal dialog a dialog will stay open
       m_frame->IconizeOrHideAndLock();
-      if(!m_frame->GetCurrentSafe().IsEmpty()) // If restored start timer again
+      if(!m_frame->IsLocked()) // If not locked, start timer again
         ConfigureIdleTimer();
     }
   }
@@ -769,7 +824,8 @@ void PWSafeApp::RestoreFrameCoords(void)
   long top, bottom, left, right;
   PWSprefs::GetInstance()->GetPrefRect(top, bottom, left, right);
   if (!(left == -1 && top == -1 && right == -1 && bottom == -1)) {
-    wxRect rcApp(static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top));
+    wxRect rcApp(static_cast<int>(left), static_cast<int>(top), 
+                 static_cast<int>(right - left + 1), static_cast<int>(bottom - top + 1));
 
     int displayWidth, displayHeight;
     ::wxDisplaySize(&displayWidth, &displayHeight);
@@ -899,7 +955,7 @@ void PWSafeApp::OnHelp(wxCommandEvent& evt)
     StringToStringMap& helpmap = GetHelpMap();
     StringToStringMap::iterator itr = helpmap.find(keyName);
     if (itr != helpmap.end()) {
-      wxHtmlModalHelp help(wxGetApp().GetTopWindow(), helpFileNamePath, itr->second, wxHF_DEFAULT_STYLE);
+      wxHtmlModalHelp help(window, helpFileNamePath, itr->second, wxHF_DEFAULT_STYLE);
     }
     else {
 #ifdef __WXDEBUG__
@@ -943,4 +999,8 @@ void PWSafeApp::RestartIdleTimer()
     m_idleTimer->Stop();
     m_idleTimer->Start(interval, wxTIMER_CONTINUOUS);
   }
+}
+
+bool PWSafeApp::IsCloseInProgress() const {
+  return m_frame->IsCloseInProgress();
 }

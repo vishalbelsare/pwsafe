@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -24,6 +24,7 @@
 #include <wx/msw/msvcrt.h>
 #endif
 
+#include <wx/richmsgdlg.h>
 #include <wx/tokenzr.h>
 
 #include "core/PWSAuxParse.h"
@@ -65,17 +66,14 @@ void PasswordSafeFrame::DoEdit(CItemData item)
   if (!item.IsShortcut()) {
     bool isItemReadOnly = m_core.IsReadOnly() || item.IsProtected();
 
-    AddEditPropSheetDlg dialog(
-      this, m_core,
+    returnCode = ShowModalAndGetResult<AddEditPropSheetDlg>(this,
+      m_core,
       isItemReadOnly ? AddEditPropSheetDlg::SheetType::VIEW : AddEditPropSheetDlg::SheetType::EDIT,
       &item
     );
-
-    returnCode = dialog.ShowModal();
   }
   else {
-    EditShortcutDlg dialog(this, m_core, &item);
-    returnCode = dialog.ShowModal();
+    returnCode = ShowModalAndGetResult<EditShortcutDlg>(this, m_core, &item);
   }
 
   if (returnCode == wxID_OK) {
@@ -110,8 +108,8 @@ void PasswordSafeFrame::OnAddClick(wxCommandEvent& WXUNUSED(evt))
     selectedGroup = m_tree->GetItemGroup(selection);
   }
 
-  AddEditPropSheetDlg addDbox(this, m_core, AddEditPropSheetDlg::SheetType::ADD, nullptr, selectedGroup);
-  if (addDbox.ShowModal() == wxID_OK) {
+  int rc = ShowModalAndGetResult<AddEditPropSheetDlg>(this, m_core, AddEditPropSheetDlg::SheetType::ADD, nullptr, selectedGroup);
+  if (rc == wxID_OK) {
     UpdateStatusBar();
   }
 }
@@ -123,8 +121,9 @@ void PasswordSafeFrame::OnAddClick(wxCommandEvent& WXUNUSED(evt))
 void PasswordSafeFrame::OnEditClick(wxCommandEvent& WXUNUSED(evt))
 {
   CItemData *item = GetSelectedEntry();
-  if (item != nullptr)
-    DoEdit(*item);
+  if (item) {
+    CallAfter(&PasswordSafeFrame::DoEdit, *item);
+  }
 }
 
 /*!
@@ -136,42 +135,76 @@ void PasswordSafeFrame::OnDeleteClick(wxCommandEvent& WXUNUSED(evt))
   bool dontaskquestion = PWSprefs::GetInstance()->
     GetPref(PWSprefs::DeleteQuestion);
 
-  bool dodelete = true;
-  int num_children = 0;
+  bool isGroup = false;
   // If tree view, check if group selected
   if (m_tree->IsShown()) {
     wxTreeItemId sel = m_tree->GetSelection();
-    if(m_tree->ItemIsGroup(sel)) {
-      num_children = static_cast<int>(m_tree->GetChildrenCount(sel));
-    }
-    else {
-      num_children = 0;
-    }
-    if (num_children > 0) // ALWAYS confirm group delete
+    isGroup = m_tree->ItemIsGroup(sel);
+    if (isGroup) // ALWAYS confirm group delete
       dontaskquestion = false;
   }
+  CallAfter(&PasswordSafeFrame::DoDeleteItems, !dontaskquestion, isGroup);
+}
 
+void PasswordSafeFrame::DoDeleteItems(bool askConfirmation, bool isGroup)
+{
+  bool dodelete = true;
   //Confirm whether to delete the item
-  if (!dontaskquestion) {
-    DeleteConfirmationDlg deleteDlg(this, num_children);
-    deleteDlg.SetConfirmdelete(PWSprefs::GetInstance()->GetPref(PWSprefs::DeleteQuestion));
-    int rc = deleteDlg.ShowModal();
+  if (askConfirmation) {
+    DestroyWrapper<DeleteConfirmationDlg> deleteDlgWrapper(this, isGroup);
+    DeleteConfirmationDlg* deleteDlg = deleteDlgWrapper.Get();
+    deleteDlg->SetConfirmdelete(PWSprefs::GetInstance()->GetPref(PWSprefs::DeleteQuestion));
+    int rc = deleteDlg->ShowModal();
     if (rc != wxID_YES) {
       dodelete = false;
     }
-    PWSprefs::GetInstance()->SetPref(PWSprefs::DeleteQuestion, deleteDlg.GetConfirmdelete());
+    if (!IsCloseInProgress()) {
+      PWSprefs::GetInstance()->SetPref(PWSprefs::DeleteQuestion, deleteDlg->GetConfirmdelete());
+    }
   }
 
   if (dodelete) {
-    Command *doit = nullptr;
+    auto *commands = MultiCommands::Create(&m_core);
+    Command *deleteCommand = nullptr;
     CItemData *item = GetSelectedEntry();
+    wxTreeItemId tid;
     if (item != nullptr) {
-      doit = DeleteItem(item);
+      tid = m_tree->Find(*item);
+      deleteCommand = DeleteItem(item);
     } else if (m_tree->GetSelection() != m_tree->GetRootItem()) {
-      doit = Delete(m_tree->GetSelection());
+      tid = m_tree->GetSelection();
+      deleteCommand = Delete(tid);
     }
-    if (doit != nullptr)
-      m_core.Execute(doit);
+    if (deleteCommand != nullptr) {
+      commands->Add(deleteCommand);
+    }
+    // If the item was the only child of its parent we make the parent empty.
+    // See src/ui/Windows/MainEdit::OnDelete
+    if (tid.IsOk()) {
+      auto root = m_tree->GetRootItem();
+      auto parent = m_tree->GetItemParent(tid);
+      auto children = m_tree->GetChildrenCount(parent, false);
+      if (parent != nullptr && root != nullptr && parent != root && children == 1) {
+        StringX sxPath = tostringx(m_tree->GetItemGroup(parent));
+        commands->Add(
+          DBEmptyGroupsCommand::Create(&m_core, sxPath, DBEmptyGroupsCommand::EG_ADD)
+        );
+      }
+    }
+    // If MultiCommands is empty, delete
+    if (commands->GetSize() == 0) {
+      delete commands;
+    }
+    else {
+      commands->Add(
+        UpdateGUICommand::Create(
+          &m_core,
+          UpdateGUICommand::ExecuteFn::WN_EXECUTE,
+          UpdateGUICommand::GUI_Action::GUI_REFRESH_TREE
+        )
+      );
+      m_core.Execute(commands);
+    }
   } // dodelete
 }
 
@@ -378,6 +411,21 @@ void PasswordSafeFrame::OnCopyPasswordClick(wxCommandEvent& evt)
 
 void PasswordSafeFrame::DoCopyPassword(CItemData &item)
 {
+  if (PWSprefs::GetInstance()->GetPref(PWSprefs::DontAskQuestion)) {
+    wxRichMessageDialog dialog(this, 
+      _("Pressing OK will copy the password of the selected item\nto the clipboard. The clipboard will be securely cleared\nwhen Password Safe is closed.\n\nPressing Cancel stops the password from being copied."), 
+      _("Clear Clipboard"), 
+      wxOK | wxCANCEL | wxICON_INFORMATION);
+
+    dialog.ShowCheckBox(_("&Don't remind me again"));
+
+    if(dialog.ShowModal() == wxID_CANCEL) {
+      return;
+    }
+
+    PWSprefs::GetInstance()->SetPref(PWSprefs::DontAskQuestion, !dialog.IsCheckBoxChecked());
+  }
+  
   if (!item.IsDependent())
     Clipboard::GetInstance()->SetData(item.GetPassword());
   else {
@@ -523,6 +571,11 @@ void PasswordSafeFrame::OnViewAttachment(wxCommandEvent& WXUNUSED(evt))
     return;
   }
 
+  CallAfter(&PasswordSafeFrame::DoViewAttachment, item);
+}
+
+void PasswordSafeFrame::DoViewAttachment(CItemData* item)
+{
   ASSERT(m_core.HasAtt(item->GetAttUUID()));
 
   CItemAtt itemAttachment = m_core.GetAtt(item->GetAttUUID());
@@ -546,10 +599,11 @@ void PasswordSafeFrame::OnViewAttachment(wxCommandEvent& WXUNUSED(evt))
     return;
   }
 
-  ViewAttachmentDlg viewAttachmentDlg(this);
+  DestroyWrapper<ViewAttachmentDlg> viewAttachmentDlgWrapper(this);
+  ViewAttachmentDlg *viewAttachmentDlg = viewAttachmentDlgWrapper.Get();
 
-  if (viewAttachmentDlg.LoadImage(itemAttachment)) {
-    viewAttachmentDlg.ShowModal();
+  if (viewAttachmentDlg->LoadImage(itemAttachment)) {
+    viewAttachmentDlg->ShowModal();
   }
   else {
     wxMessageDialog(
@@ -580,13 +634,16 @@ void PasswordSafeFrame::OnCreateShortcut(wxCommandEvent& WXUNUSED(event))
 {
   CItemData* item = GetSelectedEntry();
   if (item && !item->IsDependent()) {
-    CreateShortcutDlg dlg(this, m_core, item);
-    int rc = dlg.ShowModal();
-    if (rc == wxID_OK) {
-      UpdateAccessTime(*item);
-      Show(true);
-      UpdateStatusBar();
-    }
+    CallAfter(&PasswordSafeFrame::DoCreateShortcut, item);
+  }
+}
+
+void PasswordSafeFrame::DoCreateShortcut(CItemData* item)
+{
+  if (ShowModalAndGetResult<CreateShortcutDlg>(this, m_core, item) == wxID_OK) {
+    UpdateAccessTime(*item);
+    Show(true);
+    UpdateStatusBar();
   }
 }
 
@@ -820,7 +877,6 @@ void PasswordSafeFrame::DoAutotype(const StringX& sx_autotype,
           }
           break;
         default:
-          sxtmp += L'\\';
           sxtmp += curChar;
           break;
       }
@@ -953,17 +1009,12 @@ void PasswordSafeFrame::DoRun(CItemData& item)
   const CItemData *pci  = &item;
   const CItemData *pbci = pci->IsDependent() ? m_core.GetBaseEntry(pci) : nullptr;
 
-  StringX group, title, user, password, lastpassword, notes, url, email, autotype, runcommand;
+  CItemData effci;
+  StringX lastpassword, totpauthcode;
 
-  if (!PWSAuxParse::GetEffectiveValues(pci, pbci, 
-                                       group, title, 
-                                       user, password, lastpassword, 
-                                       notes, url, email, 
-                                       autotype, runcommand)) {
-    return;
-  }
+  PWSAuxParse::GetEffectiveValues(pci, pbci, effci, lastpassword, totpauthcode);
 
-  if (runcommand.empty()) {
+  if (effci.GetRunCommand().empty()) {
     return;
   }
 
@@ -972,7 +1023,7 @@ void PasswordSafeFrame::DoRun(CItemData& item)
   bool isSpecialUrl, doAutoType;
   StringX expandedAutoType;
 
-  StringX expandedES(PWSAuxParse::GetExpandedString(runcommand,
+  StringX expandedES(PWSAuxParse::GetExpandedString(effci.GetRunCommand(),
                                                     m_core.GetCurFile(), pci, pbci,
                                                     doAutoType, expandedAutoType,
                                                     errorMessage, columnPosition, isSpecialUrl));
@@ -996,9 +1047,10 @@ void PasswordSafeFrame::DoRun(CItemData& item)
   }
 
   expandedAutoType = PWSAuxParse::GetAutoTypeString(expandedAutoType,
-                                                    group, title, user,
-                                                    password, lastpassword,
-                                                    notes, url, email,
+                                                    effci.GetGroup(), effci.GetTitle(), effci.GetUser(),
+                                                    effci.GetPassword(), lastpassword,
+                                                    effci.GetNotes(), effci.GetURL(), effci.GetEmail(),
+                                                    totpauthcode,
                                                     vactionverboffsets);
 
   // Now honour presence of [alt], {alt} or [ssh] in the url if present
@@ -1022,7 +1074,7 @@ void PasswordSafeFrame::DoRun(CItemData& item)
 
   // FR856 - Copy Password to Clipboard on Run-Command When copy-on-browse set.
   if (PWSprefs::GetInstance()->GetPref(PWSprefs::CopyPasswordWhenBrowseToURL)) {
-    Clipboard::GetInstance()->SetData(password);
+    Clipboard::GetInstance()->SetData(effci.GetPassword());
     UpdateLastClipboardAction(CItemData::FieldType::PASSWORD);
   }
 
@@ -1044,11 +1096,12 @@ void PasswordSafeFrame::DoEmail(CItemData& item )
   }
 }
 
-void PasswordSafeFrame::DoPasswordSubset(CItemData& item )
+void PasswordSafeFrame::DoPasswordSubset(CItemData* item)
 {
-  PasswordSubsetDlg psDlg(this, item.GetPassword());
-  psDlg.ShowModal();
-  UpdateAccessTime(item);
+  if (item) {
+    ShowModalAndGetResult<PasswordSubsetDlg>(this, item->GetPassword());
+    UpdateAccessTime(*item);
+  }
 }
 
 void PasswordSafeFrame::OnUndo(wxCommandEvent& evt)
@@ -1069,8 +1122,9 @@ void PasswordSafeFrame::OnPasswordSubset(wxCommandEvent &evt)
 {
   CItemData rueItem;
   CItemData* item = GetSelectedEntry(evt, rueItem);
-  if (item != nullptr)
-    DoPasswordSubset(*item);
+  if (item) {
+    CallAfter(&PasswordSafeFrame::DoPasswordSubset, item);
+  }
 }
 
 void PasswordSafeFrame::OnPasswordQRCode(wxCommandEvent &evt)
@@ -1079,16 +1133,22 @@ void PasswordSafeFrame::OnPasswordQRCode(wxCommandEvent &evt)
     CItemData rueItem;
     CItemData* item = GetSelectedEntry(evt, rueItem);
     if (item != nullptr) {
-#ifndef NO_QR
-    QRCodeDlg dlg(this, item->GetPassword(),
-              towxstring(CItemData::FieldName(CItem::PASSWORD)) + _T(" of ") +
-              towxstring(item->GetGroup()) +
-              _T('[') + towxstring(item->GetTitle()) + _T(']') +
-              _T(':') + towxstring(item->GetUser()));
-      dlg.ShowModal();
-#endif
+      CallAfter(&PasswordSafeFrame::DoPasswordQRCode, item);
     }
   }
+}
+
+void PasswordSafeFrame::DoPasswordQRCode(CItemData* item)
+{
+#ifndef NO_QR
+  if (item) {
+    ShowModalAndGetResult<QRCodeDlg>(this, item->GetPassword(),
+            towxstring(CItemData::FieldName(CItem::PASSWORD)) + _T(" of ") +
+            towxstring(item->GetGroup()) +
+            _T('[') + towxstring(item->GetTitle()) + _T(']') +
+            _T(':') + towxstring(item->GetUser()));
+  }
+#endif
 }
 
 /*!

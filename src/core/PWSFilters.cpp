@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -9,7 +9,6 @@
 #include "PWSFilters.h"
 #include "PWSfileHeader.h"
 #include "PWHistory.h"
-#include "PWSprefs.h"
 #include "core.h"
 #include "PWScore.h"
 #include "StringX.h"
@@ -17,7 +16,6 @@
 #include "UTF8Conv.h"
 
 #include "os/file.h"
-#include "os/dir.h"
 
 #include "XML/XMLDefs.h"  // Required if testing "USE_XML_LIBRARY"
 
@@ -34,13 +32,11 @@
 #define PWS_XML_FILTER_VERSION 1
 
 #include <fstream>
-#include <iostream>
 #include <iomanip>
 #include <string>
 #include <vector>
 #include <functional>
 #include <algorithm>
-#include <map>
 
 using namespace std;
 using pws_os::CUUID;
@@ -229,110 +225,113 @@ static string GetFilterXML(const st_filters &filters, bool bWithFormatting)
     oss << "\">" << szendl;
 
     const int ft = static_cast<int>(st_fldata.ftype);
-    const char *pszfieldtype = {"\0"};
+    std::string strFieldType;
 
     // These are the entry names exported and must be recognised by the associated schema
     switch (ft) {
       case FT_GROUPTITLE:
-        pszfieldtype = "grouptitle";
+        strFieldType = "grouptitle";
         break;
       case FT_GROUP:
-        pszfieldtype = "group";
+        strFieldType = "group";
         break;
       case FT_TITLE:
-        pszfieldtype = "title";
+        strFieldType = "title";
         break;
       case FT_USER:
-        pszfieldtype = "user";
+        strFieldType = "user";
         break;
       case FT_NOTES:
-        pszfieldtype = "notes";
+        strFieldType = "notes";
         break;
       case FT_PASSWORD:
-        pszfieldtype = "password";
+        strFieldType = "password";
+        break;
+      case FT_TWOFACTORKEY:
+        strFieldType = CItemData::GetXmlFieldName(CItemData::TWOFACTORKEY);
         break;
       case FT_URL:
-        pszfieldtype = "url";
+        strFieldType = "url";
         break;
       case FT_AUTOTYPE:
-        pszfieldtype = "autotype";
+        strFieldType = "autotype";
         break;
       case FT_RUNCMD:
-        pszfieldtype = "runcommand";
+        strFieldType = "runcommand";
         break;
       case FT_DCA:
-        pszfieldtype = "DCA";
+        strFieldType = "DCA";
         break;
       case FT_SHIFTDCA:
-        pszfieldtype = "ShiftDCA";
+        strFieldType = "ShiftDCA";
         break;
       case FT_EMAIL:
-        pszfieldtype = "email";
+        strFieldType = "email";
         break;
       case FT_PROTECTED:
-        pszfieldtype = "protected";
+        strFieldType = "protected";
         break;
       case FT_SYMBOLS:
-        pszfieldtype = "symbols";
+        strFieldType = "symbols";
         break;
       case FT_POLICYNAME:
-        pszfieldtype = "policy_name";
+        strFieldType = "policy_name";
         break;
       case FT_KBSHORTCUT:
-        pszfieldtype = "kbshortcut";
+        strFieldType = "kbshortcut";
         break;
       // Time fields
       case FT_CTIME:
-        pszfieldtype = "create_time";
+        strFieldType = "create_time";
         break;
       case FT_PMTIME:
-        pszfieldtype = "password_modified_time";
+        strFieldType = "password_modified_time";
         break;
       case FT_ATIME:
-        pszfieldtype = "last_access_time";
+        strFieldType = "last_access_time";
         break;
       case FT_XTIME:
-        pszfieldtype = "expiry_time";
+        strFieldType = "expiry_time";
         break;
       case FT_RMTIME:
-        pszfieldtype = "record_modified_time";
+        strFieldType = "record_modified_time";
         break;
       case FT_XTIME_INT:
-        pszfieldtype = "password_expiry_interval";
+        strFieldType = "password_expiry_interval";
         break;
 
       // History, Policy & Attachments
       case FT_PWHIST:
-        pszfieldtype = "password_history";
+        strFieldType = "password_history";
         break;
       case FT_POLICY:
-        pszfieldtype = "password_policy";
+        strFieldType = "password_policy";
         break;
       case FT_ATTACHMENT:
-        pszfieldtype = "attachment";
+        strFieldType = "attachment";
         break;
 
       // Other!
       case FT_PASSWORDLEN:
-        pszfieldtype = "password_length";
+        strFieldType = "password_length";
         break;
       case FT_UNKNOWNFIELDS:
-        pszfieldtype = "unknownfields";
+        strFieldType = "unknownfields";
         break;
       case FT_ENTRYSIZE:
-        pszfieldtype = "entrysize";
+        strFieldType = "entrysize";
         break;
       case FT_ENTRYTYPE:
-        pszfieldtype = "entrytype";
+        strFieldType = "entrytype";
         break;
       case FT_ENTRYSTATUS:
-        pszfieldtype = "entrystatus";
+        strFieldType = "entrystatus";
         break;
       default:
         ASSERT(0);
     }
 
-    oss << sztab3 << "<" << pszfieldtype << ">" << szendl;
+    oss << sztab3 << "<" << strFieldType << ">" << szendl;
  
     PWSMatch::MatchRule mr = st_fldata.rule;
     if (mr >= PWSMatch::MR_LAST)
@@ -352,7 +351,7 @@ static string GetFilterXML(const st_filters &filters, bool bWithFormatting)
       oss << sztab4 << "<logic>" << (lgc != LC_AND ? "or" : "and")
                                      << "</logic>" << szendl;
 
-    oss << sztab3 << "</" << pszfieldtype << ">" << szendl;
+    oss << sztab3 << "</" << strFieldType << ">" << szendl;
     oss << sztab2 << "</filter_entry>" << szendl;
   }
 
@@ -555,9 +554,9 @@ static string GetFilterXML(const st_filters &filters, bool bWithFormatting)
 }
 
 struct XMLFilterWriterToString {
+  XMLFilterWriterToString(const XMLFilterWriterToString&) = default;
   XMLFilterWriterToString(coStringXStream &os, bool bWithFormatting) :
-  m_os(os), m_bWithFormatting(bWithFormatting)
-  {}
+                          m_os(os), m_bWithFormatting(bWithFormatting) {}
 
   // operator
   void operator()(const pair<const st_Filterkey, st_filters> &p)
@@ -769,17 +768,16 @@ int PWSFilters::ImportFilterXMLFile(const FilterPool fpool,
 
   // By definition - all imported filters are complete!
   // Now set this.
-  PWSFilters::iterator mf_iter;
-  for (mf_iter = this->begin(); mf_iter != this->end(); mf_iter++) {
+  for (auto mf_iter = this->begin(); mf_iter != this->end(); mf_iter++) {
     st_filters &filters = mf_iter->second;
     for_each(filters.vMfldata.begin(), filters.vMfldata.end(),
-             mem_fun_ref(&st_FilterRow::SetFilterComplete));
+             mem_fn(&st_FilterRow::SetFilterComplete));
     for_each(filters.vHfldata.begin(), filters.vHfldata.end(),
-             mem_fun_ref(&st_FilterRow::SetFilterComplete));
+             mem_fn(&st_FilterRow::SetFilterComplete));
     for_each(filters.vPfldata.begin(), filters.vPfldata.end(),
-             mem_fun_ref(&st_FilterRow::SetFilterComplete));
+             mem_fn(&st_FilterRow::SetFilterComplete));
     for_each(filters.vAfldata.begin(), filters.vAfldata.end(),
-      mem_fun_ref(&st_FilterRow::SetFilterComplete));
+      mem_fn(&st_FilterRow::SetFilterComplete));
   }
   return PWScore::SUCCESS;
 }
@@ -1154,6 +1152,7 @@ bool PWSFilterManager::PassesFiltering(const CItemData &ci, const PWScore &core)
         case FT_EMAIL:
         case FT_SYMBOLS:
         case FT_POLICYNAME:
+        case FT_TWOFACTORKEY:
           mt = PWSMatch::MT_STRING;
           break;
         case FT_PASSWORD:
@@ -1395,14 +1394,9 @@ bool PWSFilterManager::PassesPWHFiltering(const CItemData *pci) const
   bool bValue(false);
   int iValue(0);
 
-  size_t pwh_max, err_num;
-  PWHistList pwhistlist;
+  PWHistList pwhistlist(pci->GetPWHistory(), PWSUtil::TMC_EXPORT_IMPORT);
 
-  bool status = CreatePWHistoryList(pci->GetPWHistory(),
-                                    pwh_max, err_num,
-                                    pwhistlist, PWSUtil::TMC_EXPORT_IMPORT);
-
-  bPresent = pwh_max > 0 || !pwhistlist.empty();
+  bPresent = pwhistlist.getMax() > 0 || !pwhistlist.empty();
 
   for (auto group_iter = m_vHflgroups.begin();
        group_iter != m_vHflgroups.end(); group_iter++) {
@@ -1428,7 +1422,7 @@ bool PWSFilterManager::PassesPWHFiltering(const CItemData *pci) const
           mt = PWSMatch::MT_BOOL;
           break;
         case HT_ACTIVE:
-          bValue = status;
+          bValue = pwhistlist.isSaving();
           mt = PWSMatch::MT_BOOL;
           break;
         case HT_NUM:
@@ -1436,7 +1430,7 @@ bool PWSFilterManager::PassesPWHFiltering(const CItemData *pci) const
           mt = PWSMatch::MT_INTEGER;
           break;
         case HT_MAX:
-          iValue = static_cast<int>(pwh_max);
+          iValue = static_cast<int>(pwhistlist.getMax());
           mt = PWSMatch::MT_INTEGER;
           break;
         case HT_CHANGEDATE:

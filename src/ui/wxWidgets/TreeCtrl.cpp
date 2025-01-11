@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -125,6 +125,7 @@ BEGIN_EVENT_TABLE( TreeCtrl, wxTreeCtrl )
   EVT_TREE_ITEM_GETTOOLTIP( ID_TREECTRL, TreeCtrl::OnGetToolTip )
   EVT_MENU( ID_ADDGROUP, TreeCtrl::OnAddGroup )
   EVT_MENU( ID_RENAME, TreeCtrl::OnRenameGroup )
+  EVT_TREE_BEGIN_LABEL_EDIT( ID_TREECTRL, TreeCtrl::OnStartLabelEdit )
   EVT_TREE_END_LABEL_EDIT( ID_TREECTRL, TreeCtrl::OnEndLabelEdit )
   EVT_TREE_END_LABEL_EDIT( ID_TREECTRL_1, TreeCtrl::OnEndLabelEdit )
   EVT_TREE_KEY_DOWN( ID_TREECTRL, TreeCtrl::OnKeyDown )
@@ -275,7 +276,7 @@ void TreeCtrlBase::CreateControls()
 {
 ////@begin TreeCtrl content construction
 ////@end TreeCtrl content construction
-  const char **xpmList[] = {
+  static const char* const* const xpmList[] = {
     abase_exp_xpm,    // 0
     abase_warn_xpm,   // 1
     abase_xpm,        // 2
@@ -291,7 +292,7 @@ void TreeCtrlBase::CreateControls()
     empty_node_xpm,   // 12
   };
 #if wxVERSION_NUMBER >= 3103
-  const char **xpmDarkList[] = {
+  static const char* const* const xpmDarkList[] = {
     abase_exp_dark_xpm,    // 0
     abase_warn_dark_xpm,   // 1
     abase_dark_xpm,        // 2
@@ -970,7 +971,7 @@ void TreeCtrl::PreferencesChanged()
   ;
 }
 
-void EditTreeLabel(wxTreeCtrl* tree, const wxTreeItemId& id)
+void TreeCtrl::EditTreeLabel(wxTreeCtrl* tree, const wxTreeItemId& id)
 {
   if (!id) return;
   wxTextCtrl* edit = tree->EditLabel(id);
@@ -989,7 +990,7 @@ void TreeCtrl::OnAddGroup(wxCommandEvent& WXUNUSED(evt))
   wxTreeItemId parentId = GetSelection();
   wxString newItemPath = (!parentId || !parentId.IsOk() || parentId == GetRootItem() || !ItemIsGroup(parentId))? wxString(_("New Group")): GetItemGroup(parentId) + GROUP_SEL_STR + _("New Group");
   if(Find(newItemPath, GetRootItem())) {
-    wxMessageBox(_("\"") + _("New Group") + _("\" ") + _("name exists"), _("Double group name"), wxOK|wxICON_ERROR);
+    wxMessageBox(_("\"") + _("New Group") + _("\" ") + _("name exists"), _("Duplicate group name"), wxOK|wxICON_ERROR);
     return;
   }
   wxTreeItemId newItem = AddGroup(tostringx(newItemPath));
@@ -1009,6 +1010,21 @@ void TreeCtrl::OnRenameGroup(wxCommandEvent& WXUNUSED(evt))
     wxCHECK_RET(ItemIsGroup(sel), _("Renaming of non-Group items is not implemented"));
     SetItemData(sel, new PWTreeItemData(GetItemGroup(sel)));
     EditTreeLabel(this, sel);
+  }
+}
+
+void TreeCtrl::OnStartLabelEdit( wxTreeEvent& evt )
+{
+  wxTreeItemId item = evt.GetItem();
+  if(IsReadOnly() || !item.IsOk() || !ItemIsGroup(item)) {
+    // In case of read only, item not ok or item is no group editing in the tree looks not promissing
+    evt.Veto();
+    return;
+  }
+  // If old path not yet set, fill out now before editing
+  auto *data = dynamic_cast<PWTreeItemData *>(GetItemData(item));
+  if (!data) {
+    SetItemData(item, new PWTreeItemData(GetItemGroup(item)));
   }
 }
 
@@ -1035,8 +1051,15 @@ void TreeCtrl::OnEndLabelEdit( wxTreeEvent& evt )
             const wxString itemText = GetItemText(ti);
             if ((itemText == label.c_str()) && (ti != item)) {
               evt.Veto();
-              wxMessageBox(_("Same group name exists"), _("Double group name"), wxOK|wxICON_ERROR);
-              EditTreeLabel(this, item);
+              wxMessageBox(_("Group names on the same level must be unique."), _("Duplicate group name"), wxOK|wxICON_ERROR);
+              /*
+                Wrapped in a 'CallAfter' so the veto and current event can be finalized.
+                A call to 'EditTreeLabel' will trigger a new event for editing the label
+                and will open a new text entry field, whereas the previously open seems
+                still to exists. Hence, without a delay the new event seems to be in
+                conflict with the current one.
+              */
+              CallAfter(&TreeCtrl::EditTreeLabel, this, item);
               return;
             }
             ti = GetNextSibling(ti);
@@ -1069,6 +1092,10 @@ void TreeCtrl::OnEndLabelEdit( wxTreeEvent& evt )
         else if (data && data->BeingEdited()) {
           // An existing group being renamed
           FinishRenamingGroup(evt, groupItem, data->GetOldPath());
+        }
+        else {
+          // Oops, rename not possible, as starting group name unknown
+          wxFAIL_MSG(wxString::Format(wxT("ID_TREECTRL_1 no old path known")));
         }
       }
       break;
@@ -1404,6 +1431,11 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
   if (m_drag_item != nullptr) { // Drag and drop started
 
     wxTreeItemId itemDst = evt.GetItem();
+    auto parentOfDragItem = GetItemParent(m_drag_item);
+    auto sxSrcGroupName = tostringx(GetItemText(parentOfDragItem));
+    StringX sxDstGroupName;
+    bool dragItemLeavesEmptyGroup = (ItemIsGroup(parentOfDragItem) && GetChildrenCount(parentOfDragItem) == 1);
+    bool isDestinationEmptyGroup = false;
     
     if(! currentItem.IsOk() && (flags & (wxTREE_HITTEST_BELOW|wxTREE_HITTEST_NOWHERE))) {
       itemDst = GetRootItem();
@@ -1422,12 +1454,33 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
         if(! ItemIsGroup(itemDst)) {              // On no group, use parent as destination
           itemDst = GetItemParent(itemDst);
         }
+        else {                                    // On group, the group needs to be removed, if it is an empty group
+          sxDstGroupName = tostringx(GetItemText(itemDst));
+          isDestinationEmptyGroup = m_core.IsEmptyGroup(sxDstGroupName);
+        }
         if(IsDescendant(itemDst, m_drag_item)) {  // Do not drag and drop into the moved tree
           wxMessageBox(_("Destination cannot be inside source tree"), _("Drag and Drop failed"), wxOK|wxICON_ERROR);
           evt.Skip();
           m_drag_item = nullptr;
           return;
         }
+      }
+
+      auto *commands = MultiCommands::Create(&m_core);
+
+      // If the drag'd item leaves an empty group in the tree
+      // the group needs to be created as such in the database.
+      if (dragItemLeavesEmptyGroup) {
+        commands->Add(
+          DBEmptyGroupsCommand::Create(&m_core, sxSrcGroupName, DBEmptyGroupsCommand::EG_ADD)
+        );
+      }
+      // If the destination was an empty group in the tree it is not empty now
+      // and the empty group can be removed from the database.
+      if (isDestinationEmptyGroup) {
+        commands->Add(
+          DBEmptyGroupsCommand::Create(&m_core, sxDstGroupName, DBEmptyGroupsCommand::EG_DELETE)
+        );
       }
 
       if(! ItemIsGroup(m_drag_item)) {
@@ -1439,11 +1492,11 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
 
         if(makeCopy) {
           if (dataSrc->IsDependent()) {
-            m_core.Execute(
+            commands->Add(
               AddEntryCommand::Create(&m_core, modifiedItem, dataSrc->GetBaseUUID())
             );
           } else { // not alias or shortcut
-            m_core.Execute(
+            commands->Add(
               AddEntryCommand::Create(&m_core, modifiedItem)
             );
           }
@@ -1454,7 +1507,7 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
           modifiedItem.SetRMTime(t);
           
           // Move is same as rename
-          m_core.Execute(
+          commands->Add(
             EditEntryCommand::Create(&m_core, *dataSrc, modifiedItem)
           );
         }
@@ -1476,7 +1529,7 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
           wxTreeItemId si;
           if(ExistsInTree(itemDst, tostringx(label), si)) {
             evt.Veto();
-            wxMessageBox(_("Duplicate group name (use Shift to overrule)"), _("Double group name"), wxOK|wxICON_ERROR);
+            wxMessageBox(_("Duplicate group name (use Shift to overrule)"), _("Duplicate group name"), wxOK|wxICON_ERROR);
             m_drag_item = nullptr;
             return;
           }
@@ -1484,11 +1537,15 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
 
         if(makeCopy) {
           // On control key pressed do copy the tree
-          CreateCommandCopyGroup(m_drag_item, sxNewPath, sxOldPath, ! doOverride);
+          commands->Add(
+            CreateCommandCopyGroup(m_drag_item, sxNewPath, sxOldPath, ! doOverride)
+          );
         }
         else {
           // Without key board pressed to move, same as rename
-          CreateCommandRenamingGroup(sxNewPath, sxOldPath);
+          commands->Add(
+            CreateCommandRenamingGroup(sxNewPath, sxOldPath)
+          );
         }
         
         wxTreeItemId newItem = Find(towxstring(sxNewPath), GetRootItem());
@@ -1496,6 +1553,22 @@ void TreeCtrl::OnEndDrag(wxTreeEvent& evt)
           wxTreeCtrl::SelectItem(newItem);
       }
       setNodeAsNotEmpty(itemDst);
+
+      // If there are commands execute them
+      // otherwise delete the MultiCommand.
+      if (commands->GetSize() > 0) {
+        commands->Add(
+          UpdateGUICommand::Create(
+            &m_core,
+            UpdateGUICommand::ExecuteFn::WN_ALL,
+            UpdateGUICommand::GUI_Action::GUI_REFRESH_TREE
+          )
+        );
+        m_core.Execute(commands);
+      }
+      else {
+        delete commands;
+      }
     }
     else {
       if(m_drag_item.IsOk())
@@ -1588,12 +1661,23 @@ void TreeCtrl::FinishAddingGroup(wxTreeEvent& evt, wxTreeItemId groupItem)
     }
     StringX sxGroup = tostringx(groupName);
 
+    auto *commands = MultiCommands::Create(&m_core);
     // The new item we just added above will get removed once the update GUI callback from core happens.
-    DBEmptyGroupsCommand* cmd = DBEmptyGroupsCommand::Create(&m_core,
-                                                             sxGroup,
-                                                             DBEmptyGroupsCommand::EG_ADD);
-    if (cmd)
-      m_core.Execute(cmd);
+    commands->Add(
+      DBEmptyGroupsCommand::Create(&m_core, sxGroup, DBEmptyGroupsCommand::EG_ADD)
+    );
+
+    auto parent = GetItemParent(groupItem);
+    auto sxParentGroupName = tostringx(GetItemGroup(parent));
+    if (parent != GetRootItem() && m_core.IsEmptyGroup(sxParentGroupName)) {
+      commands->Add(
+        DBEmptyGroupsCommand::Create(&m_core, sxParentGroupName, DBEmptyGroupsCommand::EG_DELETE)
+      );
+    }
+
+    if (commands) {
+      m_core.Execute(commands);
+    }
 
     // evt.GetItem() is not valid anymore.  A new item has been inserted instead.
     // We can select it using the full path we computed earlier
@@ -1618,7 +1702,9 @@ void TreeCtrl::FinishRenamingGroup(wxTreeEvent& evt, wxTreeItemId groupItem, con
   StringX sxOldPath = tostringx(oldPath);
   StringX sxNewPath = tostringx(GetItemGroup(groupItem));
   
-  CreateCommandRenamingGroup(sxNewPath, sxOldPath);
+  ExecuteMultiCommands(
+    CreateCommandRenamingGroup(sxNewPath, sxOldPath)
+  );
 
   // The old treeItem is gone, since it was renamed.  We need to find the new one to select it
   wxTreeItemId newItem = Find(towxstring(sxNewPath), GetRootItem());
@@ -1626,7 +1712,7 @@ void TreeCtrl::FinishRenamingGroup(wxTreeEvent& evt, wxTreeItemId groupItem, con
     wxTreeCtrl::SelectItem(newItem);
 }
 
-void TreeCtrl::CreateCommandRenamingGroup(StringX sxNewPath, StringX sxOldPath)
+MultiCommands* TreeCtrl::CreateCommandRenamingGroup(StringX sxNewPath, StringX sxOldPath)
 {
   // We DON'T need to handle these two as they can only occur while moving items
   //    not removing groups as they become empty
@@ -1634,7 +1720,7 @@ void TreeCtrl::CreateCommandRenamingGroup(StringX sxNewPath, StringX sxOldPath)
 
   MultiCommands* pmcmd = MultiCommands::Create(&m_core);
   if (!pmcmd)
-    return;
+    return pmcmd;
 
   // This takes care of modifying all the actual items
   pmcmd->Add(RenameGroupCommand::Create(&m_core, sxOldPath, sxNewPath));
@@ -1652,8 +1738,7 @@ void TreeCtrl::CreateCommandRenamingGroup(StringX sxNewPath, StringX sxOldPath)
     }
   }
 
-  if (pmcmd->GetSize())
-    m_core.Execute(pmcmd);
+  return pmcmd;
 }
 
 CItemData TreeCtrl::CreateNewItemAsCopy(const CItemData *dataSrc, StringX sxNewPath, bool checkName, bool newEntry)
@@ -1744,11 +1829,11 @@ void TreeCtrl::ExtendCommandCopyGroup(MultiCommands* pmCmd, wxTreeItemId itemSrc
   }
 }
 
-void TreeCtrl::CreateCommandCopyGroup(wxTreeItemId itemSrc, StringX sxNewPath, StringX sxOldPath, bool checkName)
+MultiCommands* TreeCtrl::CreateCommandCopyGroup(wxTreeItemId itemSrc, StringX sxNewPath, StringX sxOldPath, bool checkName)
 {
   MultiCommands* pmcmd = MultiCommands::Create(&m_core);
   if (!pmcmd)
-    return;
+    return pmcmd;
   
   // Copy the selected tree with all entries
   wxASSERT(itemSrc != GetRootItem() && ItemIsGroup(itemSrc));
@@ -1771,8 +1856,14 @@ void TreeCtrl::CreateCommandCopyGroup(wxTreeItemId itemSrc, StringX sxNewPath, S
     }
   }
   
-  if (pmcmd->GetSize())
-    m_core.Execute(pmcmd);
+  return pmcmd;
+}
+
+void TreeCtrl::ExecuteMultiCommands(MultiCommands* commands)
+{
+  if (commands && commands->GetSize() > 0) {
+    m_core.Execute(commands);
+  }
 }
 
 /*!
@@ -2517,7 +2608,7 @@ void TreeCtrl::AddDnDEntries(MultiCommands *pmCmd, DnDObList &dnd_oblist, String
         pl.base_uuid = CUUID::NullUUID();
       }
     } else {
-        m_core.ParseBaseEntryPWD(cs_tmp, pl);
+        m_core.ParseAliasPassword(cs_tmp, pl);
     }
     
     if (pl.ibasedata > 0) {

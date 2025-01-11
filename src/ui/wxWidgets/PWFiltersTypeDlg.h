@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -18,12 +18,12 @@
  */
 
 #include <wx/choice.h>
-#include <wx/dialog.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
 #include "core/PWSFilters.h"
 #include "core/PWSprefs.h"
+#include "QueryCancelDlg.h"
 
 /*!
  * Forward declarations
@@ -48,17 +48,19 @@
  * pwFiltersTypeDlg class declaration
  */
 
-class pwFiltersTypeDlg : public wxDialog
+class pwFiltersTypeDlg : public QueryCancelDlg
 {
   DECLARE_CLASS(pwFiltersTypeDlg)
   DECLARE_EVENT_TABLE()
 
 public:
+  static pwFiltersTypeDlg* Create(wxWindow *parent, FieldType ftype, PWSMatch::MatchRule *rule, CItemData::EntryType *etype);
+protected:
   /// Constructors
-  pwFiltersTypeDlg(wxWindow* parent, FieldType ftype, PWSMatch::MatchRule &rule, CItemData::EntryType &etype);
+  pwFiltersTypeDlg(wxWindow *parent, FieldType ftype, PWSMatch::MatchRule *rule, CItemData::EntryType *etype);
 
   /// Destructor
-  virtual ~pwFiltersTypeDlg();
+  virtual ~pwFiltersTypeDlg() = default;
 
   /// Creation
   bool Create(wxWindow* parent);
@@ -80,7 +82,7 @@ public:
 
 private:
 
-  void InitDialog();
+  void InitDialog() override;
   void SetValidators();
 
   //(*Handlers(pwFiltersTypeDlg)
@@ -89,18 +91,20 @@ private:
   void OnSelectionChangeType(wxCommandEvent& event);
   //*)
 
+  bool IsChanged() const override;
+
   //(*Declarations(pwFiltersTypeDlg)
-  wxComboBox* m_ComboBoxRule;
-  wxComboBox* m_ComboBoxType;
+  wxComboBox* m_ComboBoxRule = nullptr;
+  wxComboBox* m_ComboBoxType = nullptr;
   //*)
 
   const FieldType m_ftype;
-  int m_idx;
-  int m_idx_type;
+  int m_idx = -1;
+  int m_idx_type = -1;
   CItemData::EntryType m_etype;
   // Result parameter
-  PWSMatch::MatchRule *m_prule;
-  CItemData::EntryType *m_petype;
+  PWSMatch::MatchRule *m_prule = nullptr;
+  CItemData::EntryType *m_petype = nullptr;;
 
   typedef struct etypeMapItem {
     int msgText;

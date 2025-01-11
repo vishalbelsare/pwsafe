@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -52,7 +52,7 @@ IMPLEMENT_CLASS( ImportTextDlg, wxDialog )
 BEGIN_EVENT_TABLE( ImportTextDlg, wxDialog )
 END_EVENT_TABLE()
 
-ImportTextDlg::ImportTextDlg(wxWindow* parent, const wxString filename) :  wxDialog(parent,
+ImportTextDlg::ImportTextDlg(wxWindow *parent, const wxString& filename) :  wxDialog(parent,
                                                             wxID_ANY,
                                                             _("Import Text Settings"),
                                                             wxDefaultPosition,
@@ -68,16 +68,19 @@ ImportTextDlg::ImportTextDlg(wxWindow* parent, const wxString filename) :  wxDia
                                                     importUnderGroup(false),
                                                     importPasswordsOnly(false)
 {
+  wxASSERT(!parent || parent->IsTopLevel());
+
   //since the controls aren't direct children of the dialog but instead are
   //parented by wxCollipsiblePane, we need to validate recursively
-  SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY);
+  SetExtraStyle(GetExtraStyle() | wxWS_EX_VALIDATE_RECURSIVELY);
   CreateControls();
 }
 
-ImportTextDlg::~ImportTextDlg()
+ImportTextDlg* ImportTextDlg::Create(wxWindow *parent, const wxString& filename)
 {
+  return new ImportTextDlg(parent, filename);
 }
-
+                                                                  
 wxCollapsiblePane* ImportTextDlg::CreateImportOptionsPane(wxBoxSizer* dlgSizer)
 {
   const wxSizerFlags Left = wxSizerFlags().Proportion(0).Border(wxLEFT, SideMargin);
@@ -181,7 +184,7 @@ void ImportTextDlg::CreateControls()
   wxBoxSizer* dlgSizer = new wxBoxSizer(wxVERTICAL);
   dlgSizer->AddSpacer(TopMargin);  //add a margin at the top
 
-  wxString strPrompt(_("Select a text file to import:"));
+  wxString strPrompt(_("Import text file:"));
   wxString  wildCards(_("Text files (*.txt)|*.txt|CSV files (*.csv)|*.csv|All files (*.*; *)|*.*; *"));
 
   dlgSizer->Add(new wxStaticText(this, wxID_ANY, strPrompt), Left);

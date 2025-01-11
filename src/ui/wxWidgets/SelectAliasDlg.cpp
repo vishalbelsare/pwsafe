@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -169,7 +169,7 @@ void SelectTreeCtrl::OnTreectrlSelChanged( wxTreeEvent& evt )
 {
   CItemData *pci = GetItem(evt.GetItem());
 
-  dynamic_cast<SelectAliasDlg *>(GetParent())->UpdateSelChanged(pci);
+  dynamic_cast<SelectAliasDlg*>(GetParent()->GetParent())->UpdateSelChanged(pci);
 }
 
 
@@ -179,7 +179,7 @@ void SelectTreeCtrl::OnTreectrlSelChanged( wxTreeEvent& evt )
 
 void SelectTreeCtrl::OnContextMenu( wxTreeEvent& evt )
 {
-  dynamic_cast<SelectAliasDlg*>(GetParent())->OnContextMenu(GetItem(evt.GetItem()));
+  dynamic_cast<SelectAliasDlg*>(GetParent()->GetParent())->OnContextMenu(GetItem(evt.GetItem()));
 }
 
 #if wxCHECK_VERSION(3, 1, 1)
@@ -198,7 +198,7 @@ void SelectTreeCtrl::OnMouseRightClick(wxMouseEvent& event)
 #endif // wxCHECK_VERSION(3, 1, 1)
 
   if ((positionInfo & wxTREE_HITTEST_NOWHERE) == wxTREE_HITTEST_NOWHERE) {
-    auto *parentWindow = dynamic_cast<SelectAliasDlg*>(GetParent());
+    auto *parentWindow = dynamic_cast<SelectAliasDlg*>(GetParent()->GetParent());
     wxASSERT(parentWindow != nullptr);
     Unselect();
     parentWindow->OnContextMenu(nullptr);
@@ -213,14 +213,7 @@ void SelectTreeCtrl::OnMouseRightClick(wxMouseEvent& event)
  * SelectAliasDlg constructors
  */
 
-
-SelectAliasDlg::SelectAliasDlg() : m_Core(nullptr), m_Item(nullptr), m_BaseItem(nullptr)
-{
-  Init();
-}
-
-SelectAliasDlg::SelectAliasDlg(wxWindow* parent,
-                             PWScore *core,
+SelectAliasDlg::SelectAliasDlg(wxWindow *parent, PWScore *core,
                              CItemData *item,
                              CItemData **pbci,
                              wxWindowID id, const wxString& caption,
@@ -229,53 +222,8 @@ SelectAliasDlg::SelectAliasDlg(wxWindow* parent,
                                             m_Item(item),
                                             m_BaseItem(pbci)
 {
-  Init();
-  Create(parent, id, caption, pos, size, style);
-}
+  wxASSERT(!parent || parent->IsTopLevel());
 
-
-/*!
- * SelectAliasDlg creator
- */
-
-bool SelectAliasDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
-////@begin SelectAliasDlg creation
-  SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY|wxWS_EX_BLOCK_EVENTS);
-  wxDialog::Create( parent, id, caption, pos, size, style );
-
-  CreateControls();
-  if (GetSizer())
-  {
-    GetSizer()->SetSizeHints(this);
-  }
-  Centre();
-////@end SelectAliasDlg creation
-  return true;
-}
-
-
-/*!
- * SelectAliasDlg destructor
- */
-
-SelectAliasDlg::~SelectAliasDlg()
-{
-////@begin SelectAliasDlg destruction
-////@end SelectAliasDlg destruction
-}
-
-
-/*!
- * Member initialisation
- */
-
-void SelectAliasDlg::Init()
-{
-////@begin SelectAliasDlg member initialisation
-  m_AliasName = _T("");
-  m_Tree = nullptr;
-  m_AliasBaseTextCtrl = nullptr;
   if(m_Core && m_Item && m_BaseItem) {
     CItemData *pbci = m_Core->GetBaseEntry(m_Item);
     if(pbci) {
@@ -287,9 +235,28 @@ void SelectAliasDlg::Init()
       *m_BaseItem = pbci;
     }
   }
-////@end SelectAliasDlg member initialisation
+  ////@begin SelectAliasDlg creation
+  SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY|wxWS_EX_BLOCK_EVENTS);
+  wxDialog::Create( parent, id, caption, pos, size, style );
+
+  CreateControls();
+  if (GetSizer())
+  {
+    GetSizer()->SetSizeHints(this);
+  }
+  Centre();
+////@end SelectAliasDlg creation
 }
 
+SelectAliasDlg* SelectAliasDlg::Create(wxWindow *parent, PWScore *core,
+                             CItemData *item,
+                             CItemData **pbci,
+                             wxWindowID id, const wxString& caption,
+                             const wxPoint& pos, const wxSize& size,
+                             long style)
+{
+  return new SelectAliasDlg(parent, core, item, pbci, id, caption, pos, size, style);
+}
 
 /*!
  * Control creation for SelectAliasDlg
@@ -297,51 +264,47 @@ void SelectAliasDlg::Init()
 
 void SelectAliasDlg::CreateControls()
 {    
-////@begin SelectAliasDlg content construction
-  SelectAliasDlg* itemDialog1 = this;
+  auto itemBoxSizer2 = new wxBoxSizer(wxVERTICAL);
+  this->SetSizer(itemBoxSizer2);
 
-  wxBoxSizer* itemBoxSizer2 = new wxBoxSizer(wxVERTICAL);
-  itemDialog1->SetSizer(itemBoxSizer2);
+  auto itemBoxSizer1 = new wxBoxSizer(wxHORIZONTAL);
+  itemBoxSizer2->Add(itemBoxSizer1, 0, wxALIGN_LEFT|wxLEFT|wxRIGHT|wxTOP|wxEXPAND, 5);
 
-  wxBoxSizer* itemBoxSizer1 = new wxBoxSizer(wxHORIZONTAL);
-  itemBoxSizer2->Add(itemBoxSizer1, 0, wxALIGN_LEFT|wxALL|wxEXPAND, 5);
-
-  wxStaticText* itemStaticText2 = new wxStaticText( itemDialog1, wxID_STATIC, _("Alias name:")+_T(" "), wxDefaultPosition, wxDefaultSize, 0 );
+  auto itemStaticText2 = new wxStaticText(this, wxID_STATIC, _("Alias name:"), wxDefaultPosition, wxDefaultSize, 0);
   itemBoxSizer1->Add(itemStaticText2, 0, wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL|wxALL, 5);
-  m_AliasBaseTextCtrl = new wxTextCtrl( itemDialog1, ID_ALIASNAME, m_AliasName, wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
+
+  m_AliasBaseTextCtrl = new wxTextCtrl(this, ID_ALIASNAME, m_AliasName, wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
   itemBoxSizer1->Add(m_AliasBaseTextCtrl, 1, wxALIGN_LEFT|wxALL|wxEXPAND, 5);
   // Set validators
   m_AliasBaseTextCtrl->SetValidator( wxTextValidator(wxFILTER_NONE, &m_AliasName) );
-    
-  itemBoxSizer1->AddSpacer(itemStaticText2->GetSize().GetWidth() / 2);
 
   // Selection Tree inside a box
   auto staticBoxSizer1 = new wxStaticBoxSizer(wxHORIZONTAL, this);
-  itemBoxSizer2->Add(staticBoxSizer1, 1, wxALL|wxEXPAND, 5);
-  
-  m_Tree = new SelectTreeCtrl( this, *m_Core, ID_ENTRYTREE, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS |wxTR_HIDE_ROOT|wxTR_SINGLE );
+  itemBoxSizer2->Add(staticBoxSizer1, 1, wxLEFT|wxRIGHT|wxEXPAND, 5);
+
+  m_Tree = new SelectTreeCtrl(staticBoxSizer1->GetStaticBox(), *m_Core, ID_ENTRYTREE, 
+    wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS |wxTR_HIDE_ROOT|wxTR_SINGLE
+  );
   m_Tree->SetSortingGroup();
   m_Tree->SetShowGroup(false);
-  staticBoxSizer1->Add(m_Tree, wxSizerFlags().Expand().Border(0).Proportion(1));
+  staticBoxSizer1->Add(m_Tree, 1, wxALIGN_LEFT|wxALL|wxEXPAND, 0);
 
-  wxBoxSizer* itemBoxSizer5 = new wxBoxSizer(wxHORIZONTAL);
+  auto itemBoxSizer5 = new wxBoxSizer(wxHORIZONTAL);
   itemBoxSizer2->Add(itemBoxSizer5, 0, wxALIGN_CENTER_HORIZONTAL|wxALL, 5);
 
-  wxButton* itemButton6 = new wxButton( itemDialog1, wxID_REMOVE, _("&Remove"), wxDefaultPosition, wxDefaultSize, 0 );
+  auto itemButton6 = new wxButton(this, wxID_REMOVE);
   itemBoxSizer5->Add(itemButton6, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-  wxButton* itemButton7 = new wxButton( itemDialog1, wxID_OK, _("Select"), wxDefaultPosition, wxDefaultSize, 0 );
+  auto itemButton7 = new wxButton(this, wxID_OK, _("Select"));
   itemBoxSizer5->Add(itemButton7, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-  wxButton* itemButton8 = new wxButton( itemDialog1, wxID_CANCEL, _("Cancel"), wxDefaultPosition, wxDefaultSize, 0 );
+  auto itemButton8 = new wxButton(this, wxID_CANCEL);
   itemBoxSizer5->Add(itemButton8, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-  wxButton* itemButton9 = new wxButton( itemDialog1, wxID_HELP, _("&Help"), wxDefaultPosition, wxDefaultSize, 0 );
+  auto itemButton9 = new wxButton(this, wxID_HELP);
   itemBoxSizer5->Add(itemButton9, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5);
 
-////@end SelectAliasDlg content construction
-  
-  if(*m_BaseItem == nullptr || m_Core->IsReadOnly()) {
+  if (*m_BaseItem == nullptr || m_Core->IsReadOnly()) {
     itemButton6->Disable();
     itemButton7->Disable();
   }
@@ -428,7 +391,7 @@ void SelectAliasDlg::OnOkClick( wxCommandEvent& event )
 {
   if (Validate() && TransferDataFromWindow()) {
     if(m_AliasName.IsEmpty()) {
-      wxMessageBox(_("No Alias name given."), _("Please name the alias."), wxOK|wxICON_ERROR);
+      wxMessageBox(_("No Alias name given."), _("Name the alias."), wxOK|wxICON_ERROR);
       return;
     }
   }
@@ -579,16 +542,16 @@ void SelectTreeCtrl::OnCollapseAll(wxCommandEvent& evt)
   }
 }
 
-void SelectTreeCtrl::OnViewClick(wxCommandEvent& evt)
+void SelectTreeCtrl::OnViewClick(wxCommandEvent&)
+{
+  CallAfter(&SelectTreeCtrl::DoViewClick);
+}
+
+void SelectTreeCtrl::DoViewClick()
 {
   if(m_menu_item) {
     CItemData item = *m_menu_item;
     item.SetProtected(true);
-    AddEditPropSheetDlg dialog(
-      this, m_core,
-      AddEditPropSheetDlg::SheetType::VIEW,
-      &item
-    );
-    (void) dialog.ShowModal();
+    ShowModalAndGetResult<AddEditPropSheetDlg>(this, m_core, AddEditPropSheetDlg::SheetType::VIEW, &item);
   }
 }

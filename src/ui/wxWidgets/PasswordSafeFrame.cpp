@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -39,26 +39,18 @@
 
 #include "AboutDlg.h"
 #include "Clipboard.h"
-#include "CompareDlg.h"
 #include "DragBarCtrl.h"
-#include "ExportTextWarningDlg.h"
 #include "GridCtrl.h"
 #include "GridShortcutsValidator.h"
 #include "GridTable.h"
 #include "GuiInfo.h"
-#include "ImportTextDlg.h"
-#include "ImportXmlDlg.h"
-#include "MergeDlg.h"
 #include "PasswordSafeFrame.h"
 #include "PasswordSafeSearch.h"
-#include "PropertiesDlg.h"
 #include "PWSafeApp.h"
 #include "QRCodeDlg.h"
 #include "SafeCombinationPromptDlg.h"
-#include "SafeCombinationSetupDlg.h"
-#include "SelectionCriteria.h"
+#include "SetDatabaseIdDlg.h"
 #include "StatusBar.h"
-#include "SyncWizard.h"
 #include "SystemTray.h"
 #include "SystemTrayMenuId.h"
 #include "ToolbarButtons.h"
@@ -282,6 +274,7 @@ BEGIN_EVENT_TABLE( PasswordSafeFrame, wxFrame )
   EVT_UPDATE_UI( ID_BACKUP,             PasswordSafeFrame::OnUpdateUI                    )
   EVT_UPDATE_UI( ID_RESTORE,            PasswordSafeFrame::OnUpdateUI                    )
   EVT_UPDATE_UI( ID_PWDPOLSM,           PasswordSafeFrame::OnUpdateUI                    )
+  EVT_UPDATE_UI( ID_SETDATABASEID,      PasswordSafeFrame::OnUpdateUI                    )
 #ifndef NO_YUBI
   EVT_UPDATE_UI( ID_YUBIKEY_MNG,        PasswordSafeFrame::OnUpdateUI                    )
 #endif
@@ -335,7 +328,7 @@ END_EVENT_TABLE()
 
 PasswordSafeFrame::PasswordSafeFrame(PWScore &core)
 : m_core(core), m_currentView(ViewType::GRID), m_search(nullptr), m_sysTray(new SystemTray(this)),
-  m_exitFromMenu(false), m_bRestoredDBUnsaved(false),
+  m_bRestoredDBUnsaved(false),
   m_RUEList(core), m_guiInfo(new GuiInfo), m_bTSUpdated(false), m_savedDBPrefs(wxEmptyString),
   m_CurrentPredefinedFilter(NONE), m_bFilterActive(false), m_InitialTreeDisplayStatusAtOpen(true),
   m_LastClipboardAction(wxEmptyString), m_LastAction(CItem::FieldType::START)
@@ -348,7 +341,7 @@ PasswordSafeFrame::PasswordSafeFrame(wxWindow* parent, PWScore &core,
                                      const wxPoint& pos, const wxSize& size,
                                      long style)
   : m_core(core), m_currentView(ViewType::GRID), m_search(nullptr), m_sysTray(new SystemTray(this)),
-    m_exitFromMenu(false), m_bRestoredDBUnsaved(false),
+    m_bRestoredDBUnsaved(false),
     m_RUEList(core), m_guiInfo(new GuiInfo), m_bTSUpdated(false), m_savedDBPrefs(wxEmptyString),
     m_CurrentPredefinedFilter(NONE), m_bFilterActive(false), m_InitialTreeDisplayStatusAtOpen(true),
     m_LastClipboardAction(wxEmptyString), m_LastAction(CItem::FieldType::START)
@@ -393,6 +386,12 @@ bool PasswordSafeFrame::Create( wxWindow* parent, wxWindowID id, const wxString&
   CreateDragBar();
   CreateSearchBar();
   CreateStatusBar();
+
+  if (!LoadLayoutPreferences()) {
+    pws_os::Trace(L"The AUI manager failed to load the layout preferences.");
+  }
+
+  UpdateSearchBarVisibility();
   m_AuiManager.Update();
   return true;
 }
@@ -405,7 +404,7 @@ PasswordSafeFrame::~PasswordSafeFrame()
 {
 ////@begin PasswordSafeFrame destruction
 ////@end PasswordSafeFrame destruction
-  if (m_core.IsDbOpen())
+  if (m_core.IsDbFileSet())
     SaveIfChanged(); // moved here from PWSafeApp::OnExit(), where it's called too late.
 
   m_AuiManager.UnInit();
@@ -435,7 +434,7 @@ void PasswordSafeFrame::Init()
   } else {
     SetTreeSortType(TreeSortType::GROUP);
   }
-  
+
   m_RUEList.SetMax(PWSprefs::GetInstance()->PWSprefs::MaxREItems);
 ////@begin PasswordSafeFrame member initialisation
   m_Toolbar = nullptr;
@@ -465,6 +464,7 @@ void PasswordSafeFrame::RegisterLanguageMenuItems() {
   AddLanguage( ID_LANGUAGE_KOREAN,    wxLANGUAGE_KOREAN,  L"Korean"   );  /* code: 'ko' */
   AddLanguage( ID_LANGUAGE_POLISH,    wxLANGUAGE_POLISH,  L"Polish"   );  /* code: 'pl' */
   AddLanguage( ID_LANGUAGE_RUSSIAN,   wxLANGUAGE_RUSSIAN, L"Russian"  );  /* code: 'ru' */
+  AddLanguage( ID_LANGUAGE_SLOVENIAN, wxLANGUAGE_SLOVENIAN, L"Slovenian"  );  /* code: 'sl' */
   AddLanguage( ID_LANGUAGE_SPANISH,   wxLANGUAGE_SPANISH, L"Spanish"  );  /* code: 'es' */
   AddLanguage( ID_LANGUAGE_SWEDISH,   wxLANGUAGE_SWEDISH, L"Swedish"  );  /* code: 'sv' */
 
@@ -521,10 +521,10 @@ void PasswordSafeFrame::CreateMenubar()
 
   // Added for window managers which have no iconization concept
   if (m_sysTray->GetTrayStatus() == SystemTray::TrayStatus::LOCKED) {
-    menuFile->Append(ID_UNLOCK_SAFE, _("&Unlock Safe\tCtrl+I"), wxEmptyString, wxITEM_NORMAL);
+    menuFile->Append(ID_UNLOCK_SAFE, _("&Unlock\tCtrl+I"), wxEmptyString, wxITEM_NORMAL);
   }
   else {
-    menuFile->Append(ID_LOCK_SAFE, _("&Lock Safe\tCtrl+J"), wxEmptyString, wxITEM_NORMAL);
+    menuFile->Append(ID_LOCK_SAFE, _("&Lock\tCtrl+J"), wxEmptyString, wxITEM_NORMAL);
   }
 
   if (wxGetApp().recentDatabases().GetCount() > 0) {
@@ -535,17 +535,17 @@ void PasswordSafeFrame::CreateMenubar()
     }
     // Most recently used DBs listed as submenu of File menu
     else {
-      auto recentSafesMenu = new wxMenu;
-      wxGetApp().recentDatabases().AddFilesToMenu(recentSafesMenu);
+      auto recentDatabasesMenu = new wxMenu;
+      wxGetApp().recentDatabases().AddFilesToMenu(recentDatabasesMenu);
       menuFile->AppendSeparator();
-      menuFile->Append(ID_RECENTSAFES, _("&Recent Safes..."), recentSafesMenu);
+      menuFile->Append(ID_RECENTSAFES, _("&Recent Databases..."), recentDatabasesMenu);
     }
   }
   else {
     menuFile->AppendSeparator();
   }
 
-  menuFile->Append(ID_MENU_CLEAR_MRU, _("Clear Recent Safe List"), wxEmptyString, wxITEM_NORMAL);
+  menuFile->Append(ID_MENU_CLEAR_MRU, _("Clear Recently Opened List"), wxEmptyString, wxITEM_NORMAL);
   menuFile->AppendSeparator();
   menuFile->Append(wxID_SAVE, _("&Save..."), wxEmptyString, wxITEM_NORMAL);
   menuFile->Append(wxID_SAVEAS, _("Save &As..."), wxEmptyString, wxITEM_NORMAL);
@@ -681,7 +681,7 @@ void PasswordSafeFrame::CreateMenubar()
   /////////////////////////////////////////////////////////////////////////////
 
   auto menuManage = new wxMenu;
-  menuManage->Append(ID_CHANGECOMBO, _("&Change Safe Combination..."), wxEmptyString, wxITEM_NORMAL);
+  menuManage->Append(ID_CHANGECOMBO, _("&Change Master Password..."), wxEmptyString, wxITEM_NORMAL);
   menuManage->AppendSeparator();
   menuManage->Append(ID_BACKUP, _("Make &Backup...\tCtrl+B"), wxEmptyString, wxITEM_NORMAL);
   menuManage->Append(ID_RESTORE, _("&Restore from Backup...\tCtrl+R"), wxEmptyString, wxITEM_NORMAL);
@@ -789,7 +789,10 @@ void PasswordSafeFrame::CreateControls()
   Connect(rdb.GetBaseId(), rdb.GetBaseId() + rdb.GetMaxFiles() - 1, wxEVT_COMMAND_MENU_SELECTED,
             wxCommandEventHandler(PasswordSafeFrame::OnOpenRecentDB));
 
-  m_AuiManager.AddPane(panel, wxAuiPaneInfo().CenterPane().Resizable().Show());
+  m_AuiManager.AddPane(panel, wxAuiPaneInfo().
+    Name(wxT("mainview")).Caption(wxT("Main View")).
+    CenterPane().Resizable().Show()
+  );
 }
 
 /**
@@ -858,6 +861,8 @@ void PasswordSafeFrame::CreateMainToolbar()
     wxAUI_TB_DEFAULT_STYLE|wxAUI_TB_GRIPPER|wxAUI_TB_OVERFLOW|(PWSprefs::GetInstance()->GetPref(PWSprefs::ToolbarShowText) ? wxAUI_TB_TEXT : 0)
   );
 
+  m_Toolbar->SetToolBorderPadding(5);
+
   RefreshToolbarButtons();
 
   const bool showToolbar = PWSprefs::GetInstance()->GetPref(PWSprefs::ShowToolbar);
@@ -865,7 +870,7 @@ void PasswordSafeFrame::CreateMainToolbar()
   GetMenuBar()->Check(ID_SHOWHIDE_TOOLBAR, showToolbar);
 
   m_AuiManager.AddPane(m_Toolbar, wxAuiPaneInfo().
-    Name("maintoolbar").Caption(_("Main Toolbar")).
+    Name(wxT("maintoolbar")).Caption(wxT("Main Toolbar")).
     ToolbarPane().Top().Row(0).Layer(0).
     Dockable(true).Floatable(false).Gripper(true).
     Show(showToolbar).MinSize(-1, 25)
@@ -931,8 +936,6 @@ void PasswordSafeFrame::RefreshToolbarButtons()
  */
 void PasswordSafeFrame::UpdateMainToolbarBitmaps()
 {
-  auto pref = PWSprefs::GetInstance();
-  wxASSERT(pref);
   auto toolbar = GetToolBar();
   wxASSERT(toolbar);
 
@@ -994,7 +997,7 @@ void PasswordSafeFrame::DeleteMainToolbarSeparators()
  */
 wxAuiPaneInfo& PasswordSafeFrame::GetMainToolbarPane()
 {
-  return m_AuiManager.GetPane("maintoolbar");
+  return m_AuiManager.GetPane(wxT("maintoolbar"));
 }
 
 /**
@@ -1006,12 +1009,14 @@ void PasswordSafeFrame::CreateDragBar()
 
   wxCHECK_RET(m_Dragbar, wxT("Could not create dragbar"));
 
+  m_Dragbar->SetToolBorderPadding(5);
+
   const bool showToolbar = PWSprefs::GetInstance()->GetPref(PWSprefs::ShowDragbar);
 
   GetMenuBar()->Check(ID_SHOWHIDE_DRAGBAR, showToolbar);
 
   m_AuiManager.AddPane(m_Dragbar, wxAuiPaneInfo().
-    Name("dragbar").Caption(_("Dragbar")).
+    Name(wxT("dragbar")).Caption(wxT("Dragbar")).
     ToolbarPane().Top().Row(1).Layer(0).
     Dockable(true).Floatable(false).Gripper(true).
     Show(showToolbar).MinSize(-1, 25)
@@ -1034,7 +1039,7 @@ void PasswordSafeFrame::UpdateDragbarTooltips()
  */
 wxAuiPaneInfo& PasswordSafeFrame::GetDragBarPane()
 {
-  return m_AuiManager.GetPane("dragbar");
+  return m_AuiManager.GetPane(wxT("dragbar"));
 }
 
 /**
@@ -1048,7 +1053,7 @@ void PasswordSafeFrame::CreateSearchBar()
   m_search->SetGripperVisible(false); // since it is not dockable and movable there is no need for a gripper
 
   m_AuiManager.AddPane(m_search, wxAuiPaneInfo().
-    Name("searchbar").Caption(_("Searchbar")).
+    Name(wxT("searchbar")).Caption(wxT("Searchbar")).
     ToolbarPane().Bottom().Layer(1).
     Dockable(false).Floatable(false).Gripper(false).
     MinSize(-1, 35).Hide()
@@ -1061,7 +1066,7 @@ void PasswordSafeFrame::CreateSearchBar()
  */
 wxAuiPaneInfo& PasswordSafeFrame::GetSearchBarPane()
 {
-  return m_AuiManager.GetPane("searchbar");
+  return m_AuiManager.GetPane(wxT("searchbar"));
 }
 
 /**
@@ -1071,6 +1076,7 @@ void PasswordSafeFrame::ShowSearchBar()
 {
   GetSearchBarPane().Show();
   m_AuiManager.Update();
+  PWSprefs::GetInstance()->SetPref(PWSprefs::FindToolBarActive, true);
 }
 
 /**
@@ -1081,6 +1087,22 @@ void PasswordSafeFrame::HideSearchBar()
   GetSearchBarPane().Hide();
   m_AuiManager.Update();
   SetFocus();
+  PWSprefs::GetInstance()->SetPref(PWSprefs::FindToolBarActive, false);
+}
+
+/**
+ * Update the search bar visibility based on preference.
+ */
+void PasswordSafeFrame::UpdateSearchBarVisibility()
+{
+  const auto showSearchBar = PWSprefs::GetInstance()->GetPref(PWSprefs::FindToolBarActive);
+  if (showSearchBar) {
+    m_search->Activate();
+    GetSearchBarPane().Show();
+  }
+  else {
+    GetSearchBarPane().Hide();
+  }
 }
 
 /**
@@ -1135,7 +1157,7 @@ wxIcon PasswordSafeFrame::GetIconResource( const wxString& name )
 
 void PasswordSafeFrame::SetTitle(const wxString& title)
 {
-  wxString newtitle = _T("PasswordSafe");
+  wxString newtitle = _T("Password Safe");
   if (!title.empty()) {
     newtitle += _T(" - ");
     StringX fname = tostringx(title);
@@ -1206,6 +1228,26 @@ void PasswordSafeFrame::ShowGrid(bool show)
   }
   else {
     m_guiInfo->SaveGridViewInfo(m_grid);
+  }
+
+  // Workaround for reported issue GH#829 as wxGrid does not honor dark themes like wxTree does.
+  // See https://github.com/pwsafe/pwsafe/issues/829
+#if wxVERSION_NUMBER >= 3103
+  if (show && m_tree && m_grid && wxSystemSettings::GetAppearance().IsDark()) {
+#else
+  if (show && m_tree && m_grid) {
+#endif
+    auto gridBackgroundColor = m_grid->GetDefaultCellBackgroundColour();
+    auto treeBackgroundColor = m_tree->GetBackgroundColour();
+
+    auto gridTextColor = m_grid->GetDefaultCellTextColour();
+    auto treeTextColor = m_tree->GetForegroundColour();
+
+    if ((gridBackgroundColor != treeBackgroundColor) || (gridTextColor != treeTextColor)) {
+      m_grid->SetDefaultCellBackgroundColour(treeBackgroundColor);
+      m_grid->SetDefaultCellTextColour(treeTextColor);
+      m_grid->Refresh();
+    }
   }
 
   m_grid->Show(show);
@@ -1347,16 +1389,24 @@ int PasswordSafeFrame::Open(const wxString &fname)
   if (rc != PWScore::SUCCESS)
     return rc;
 
+  // Save the current file name so we can unlock it later.
+  stringT oldfn = GetCurrentFile().c_str();
+
   // prompt for password, try to Load.
-  SafeCombinationPromptDlg pwdprompt(this, m_core, fname, false);
-  if (pwdprompt.ShowModal() == wxID_OK) {
+  DestroyWrapper<SafeCombinationPromptDlg> pwdpromptWrapper(this, m_core, fname);
+  SafeCombinationPromptDlg* pwdprompt = pwdpromptWrapper.Get();
+
+  if (pwdprompt->ShowModal() == wxID_OK) {
     m_core.SetCurFile(tostringx(fname));
-    StringX password = pwdprompt.GetPassword();
+    StringX password = pwdprompt->GetPassword();
     int retval = Load(password);
     if (retval == PWScore::SUCCESS) {
       m_InitialTreeDisplayStatusAtOpen = true;
       Show();
       wxGetApp().recentDatabases().AddFileToHistory(fname);
+
+      // The new file is open.  Clear the lock on the old file, if any.
+      m_core.SafeUnlockFile(oldfn);
     }
     return retval;
   } else
@@ -1479,16 +1529,15 @@ void PasswordSafeFrame::OnCloseWindow( wxCloseEvent& evt )
   wxGetApp().SaveFrameCoords();
   const bool systrayEnabled = PWSprefs::GetInstance()->GetPref(PWSprefs::UseSystemTray);
   /*
-   * Really quit if the user chooses to quit from File menu, or
+   * Really quit if the user chooses to quit from File or systray menu, or
    * by clicking the 'X' in title bar or the system menu pulldown
    * from the top-left of the titlebar while systray is disabled
    */
-  if (m_exitFromMenu || !systrayEnabled) {
+  if (IsCloseInProgress() || !systrayEnabled) {
     if (evt.CanVeto()) {
       int rc = SaveIfChanged();
       if (rc == PWScore::USER_CANCEL) {
         evt.Veto();
-        m_exitFromMenu = false;
         return;
       }
     }
@@ -1530,9 +1579,7 @@ void PasswordSafeFrame::OnCloseWindow( wxCloseEvent& evt )
 
 void PasswordSafeFrame::OnAboutClick(wxCommandEvent& WXUNUSED(evt))
 {
-  AboutDlg* window = new AboutDlg(this);
-  window->ShowModal();
-  window->Destroy();
+  ShowModalAndGetResult<AboutDlg>(this);
 }
 
 /*!
@@ -1561,6 +1608,11 @@ void PasswordSafeFrame::OnRunCommand(wxCommandEvent& evt)
 
 void PasswordSafeFrame::OnEditBase(wxCommandEvent& WXUNUSED(evt))
 {
+  CallAfter(&PasswordSafeFrame::DoEditBase);
+}
+
+void PasswordSafeFrame::DoEditBase()
+{
   CItemData* item = GetSelectedEntry();
   if (item && item->IsDependent()) {
     item = m_core.GetBaseEntry(item);
@@ -1580,9 +1632,10 @@ void PasswordSafeFrame::SelectItem(const CUUID& uuid)
     }
 }
 
-void PasswordSafeFrame::SaveSettings(void) const
+void PasswordSafeFrame::SaveSettings(void)
 {
   m_grid->SaveSettings();
+  SaveLayoutPreferences();
 }
 
 bool PasswordSafeFrame::IsRUEEvent(const wxCommandEvent& evt) const
@@ -1882,7 +1935,7 @@ CItemData* PasswordSafeFrame::GetBaseEntry(const CItemData *item) const
 
 bool PasswordSafeFrame::CheckReportPresent(int iAction)
 {
-  if(m_core.IsDbOpen()) {
+  if(m_core.IsDbFileSet()) {
     CReport rpt;
     rpt.StartReport(iAction, m_core.GetCurFile().c_str(), false);
     return rpt.ReportExistsOnDisk();
@@ -1906,6 +1959,7 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
   const bool isTreeViewGroupSelected = isTreeView && m_tree->IsGroupSelected();
   const bool isTreeViewEmpty         = isTreeView && !m_tree->HasItems(); // excludes the invisible root item
   const bool isTreeViewItemSelected  = isTreeView && m_tree->HasSelection();
+  const bool isX11                   = wxUtilities::IsDisplayManagerX11();
 
   pci = GetSelectedEntry();
 
@@ -1917,7 +1971,7 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
 
   switch (evt.GetId()) {
     case wxID_SAVE:
-      evt.Enable(m_core.IsDbOpen() && !isFileReadOnly && (m_core.HasDBChanged() || m_core.HaveDBPrefsChanged()));
+      evt.Enable(m_core.IsDbFileSet() && !isFileReadOnly && (m_core.HasDBChanged() || m_core.HaveDBPrefsChanged()));
       break;
 
     case wxID_SAVEAS:
@@ -1931,7 +1985,7 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
 #ifndef NO_YUBI
     case ID_YUBIKEY_MNG:
 #endif
-      evt.Enable(m_core.IsDbOpen());
+      evt.Enable(m_core.IsDbFileSet());
       break;
       
     case ID_REPORT_SYNCHRONIZE:
@@ -1986,21 +2040,21 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
     case ID_SORT_TREE_BY_GROUP:
     case ID_SORT_TREE_BY_NAME:
     case ID_SORT_TREE_BY_DATE:
-      evt.Enable(m_core.IsDbOpen() && isTreeView);
+      evt.Enable(m_core.IsDbFileSet() && isTreeView);
       break;
       
     case ID_EXPORTMENU:
     case ID_COMPARE:
-      evt.Enable(m_core.IsDbOpen() && m_core.GetNumEntries() != 0);
+      evt.Enable(m_core.IsDbFileSet() && m_core.GetNumEntries() != 0);
       break;
 
     case ID_ADDGROUP:
-      evt.Enable((isTreeViewGroupSelected || isTreeViewEmpty || !isTreeViewItemSelected) && !isFileReadOnly && IsTreeSortGroup() && m_core.IsDbOpen());
+      evt.Enable((isTreeViewGroupSelected || isTreeViewEmpty || !isTreeViewItemSelected) && !isFileReadOnly && IsTreeSortGroup() && m_core.IsDbFileSet());
       break;
 
     case ID_EXPANDALL:
     case ID_COLLAPSEALL:
-      evt.Enable(!isTreeViewEmpty && m_core.IsDbOpen());
+      evt.Enable(!isTreeViewEmpty && m_core.IsDbFileSet());
       break;
 
     case ID_RENAME:
@@ -2039,9 +2093,12 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
           (pci->IsNormal() || pci->IsShortcutBase()));
       break;
 
+    case ID_AUTOTYPE:
+      evt.Enable(isX11 && !isTreeViewGroupSelected && pci);
+      break;
+
     case ID_EDIT:
     case ID_COPYPASSWORD:
-    case ID_AUTOTYPE:
     case ID_PASSWORDSUBSET:
     case ID_PASSWORDQRCODE:
       evt.Enable(!isTreeViewGroupSelected && pci);
@@ -2065,16 +2122,19 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
       break;
 
     case ID_SYNCHRONIZE:
+      evt.Enable(!isFileReadOnly && m_core.IsDbFileSet() && m_core.GetNumEntries() != 0);
+      break;
+
     case ID_CHANGECOMBO:
-      evt.Enable(!isFileReadOnly && m_core.IsDbOpen() && m_core.GetNumEntries() != 0);
+      evt.Enable(!isFileReadOnly && m_core.IsDbFileSet());
       break;
 
     case wxID_FIND:
-      evt.Enable(m_core.IsDbOpen() && m_core.GetNumEntries() != 0);
+      evt.Enable(m_core.IsDbFileSet() && m_core.GetNumEntries() != 0);
       break;
 
     case wxID_ADD:
-      evt.Enable(!isFileReadOnly && m_core.IsDbOpen());
+      evt.Enable(!isFileReadOnly && m_core.IsDbFileSet());
       break;
 
     case wxID_DELETE:
@@ -2086,34 +2146,34 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
       break;
 
     case ID_SHOWHIDE_UNSAVED:
-      evt.Enable((m_CurrentPredefinedFilter == UNSAVED) || ((m_CurrentPredefinedFilter == NONE) && m_core.IsDbOpen() && !isFileReadOnly && m_core.HasDBChanged()));
+      evt.Enable((m_CurrentPredefinedFilter == UNSAVED) || ((m_CurrentPredefinedFilter == NONE) && m_core.IsDbFileSet() && !isFileReadOnly && m_core.HasDBChanged()));
       evt.Check(m_CurrentPredefinedFilter == UNSAVED);
       break;
 
     case ID_SHOW_ALL_EXPIRY:
       evt.Enable((m_CurrentPredefinedFilter == EXPIRY) || ((m_CurrentPredefinedFilter == NONE) &&
-       m_core.IsDbOpen() &&
+       m_core.IsDbFileSet() &&
        m_core.GetExpirySize() != 0));
       evt.Check(m_CurrentPredefinedFilter == EXPIRY);
       break;
 
     case ID_SHOW_LAST_FIND_RESULTS:
       evt.Enable((m_CurrentPredefinedFilter == LASTFIND) || ((m_CurrentPredefinedFilter == NONE) &&
-                  m_core.IsDbOpen() &&
+                  m_core.IsDbFileSet() &&
                   m_FilterManager.GetFindFilterSize() != 0));
       evt.Check(m_CurrentPredefinedFilter == LASTFIND);
       break;
 
     case ID_MERGE:
     case ID_IMPORTMENU:
-      evt.Enable(!isFileReadOnly && m_core.IsDbOpen());
+      evt.Enable(!isFileReadOnly && m_core.IsDbFileSet());
       break;
       
     case ID_IMPORT_XML:
 #if (!defined(_WIN32) && USE_XML_LIBRARY == MSXML)
       evt.Enable(false);
 #else
-      evt.Enable(!isFileReadOnly && m_core.IsDbOpen());
+      evt.Enable(!isFileReadOnly && m_core.IsDbFileSet());
 #endif
       break;
 
@@ -2128,23 +2188,24 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
 
     case ID_PWDPOLSM:
     case ID_LOCK_SAFE:
-      evt.Enable(m_core.IsDbOpen() && !m_sysTray->IsLocked());
+    case ID_SETDATABASEID:
+      evt.Enable(m_core.IsDbFileSet() && !m_sysTray->IsLocked());
       break;
 
     case ID_UNLOCK_SAFE:
-      evt.Enable(m_core.IsDbOpen() && m_sysTray->IsLocked());
+      evt.Enable(m_core.IsDbFileSet() && m_sysTray->IsLocked());
       break;
 
     case ID_FILTERMENU:
-      evt.Enable(m_core.IsDbOpen());
+      evt.Enable(m_core.IsDbFileSet());
       break;
       
     case ID_EDITFILTER:
-      evt.Enable(m_core.IsDbOpen() && m_CurrentPredefinedFilter == NONE); // Mark unimplemented
+      evt.Enable(m_core.IsDbFileSet() && m_CurrentPredefinedFilter == NONE); // Mark unimplemented
       break;
       
     case ID_APPLYFILTER:
-      evt.Enable(m_core.IsDbOpen() && (m_bFilterActive || CurrentFilter().IsActive()));
+      evt.Enable(m_core.IsDbFileSet() && (m_bFilterActive || CurrentFilter().IsActive()));
       if(m_bFilterActive) {
         m_ApplyClearFilter->SetItemLabel(_("&Clear current"));
       }
@@ -2154,15 +2215,15 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
       break;
       
     case ID_MANAGEFILTERS:
-      evt.Enable(m_core.IsDbOpen() && m_CurrentPredefinedFilter == NONE); // Mark unimplemented
+      evt.Enable(m_core.IsDbFileSet() && m_CurrentPredefinedFilter == NONE); // Mark unimplemented
       break;
       
     case ID_SHOW_EMPTY_GROUP_IN_FILTER:
-      evt.Enable(m_core.IsDbOpen() && isTreeView && m_bFilterActive);
+      evt.Enable(m_core.IsDbFileSet() && isTreeView && m_bFilterActive);
       break;
 
     case ID_SUBVIEWSMENU:
-      evt.Enable(m_core.IsDbOpen());
+      evt.Enable(m_core.IsDbFileSet());
       break;
 
     case ID_CUSTOMIZETOOLBAR:
@@ -2180,10 +2241,10 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
     case ID_CHANGEMODE:
     {
       bool bFileIsReadOnly = true;
-      if(m_core.IsDbOpen()) {
+      if(m_core.IsDbFileSet()) {
         pws_os::FileExists(m_core.GetCurFile().c_str(), bFileIsReadOnly);
       }
-      evt.Enable(m_core.IsDbOpen() && !bFileIsReadOnly);
+      evt.Enable(m_core.IsDbFileSet() && !bFileIsReadOnly);
       break;
     }
     default:
@@ -2193,8 +2254,13 @@ void PasswordSafeFrame::OnUpdateUI(wxUpdateUIEvent& evt)
 
 bool PasswordSafeFrame::IsClosed() const
 {
-  return (!m_core.IsDbOpen() && m_core.GetNumEntries() == 0 &&
+  return (!m_core.IsDbFileSet() && m_core.GetNumEntries() == 0 &&
           !m_core.HasDBChanged() && !m_core.AnyToUndo() && !m_core.AnyToRedo());
+}
+
+bool PasswordSafeFrame::IsLocked() const
+{
+  return m_sysTray->IsLocked();
 }
 
 void PasswordSafeFrame::RebuildGUI(const int iView /*= iBothViews*/)
@@ -2366,10 +2432,10 @@ void PasswordSafeFrame::CleanupAfterReloadFailure(bool tellUser)
 /**
  * Unlock database
  * @param restoreUI restore opened windows after unlock
- * @param iconizeOnFailure will iconize if this parameters set to true and
- *   VerifySafeCombination() failed
+ * @param iconizeOnCancel will iconize if this parameters set to true and
+ *   user canceled dialog
 */
-void PasswordSafeFrame::UnlockSafe(bool restoreUI, bool iconizeOnFailure)
+void PasswordSafeFrame::UnlockSafe(bool restoreUI, bool iconizeOnCancel)
 {
   wxMutexTryLocker unlockMutex(m_dblockMutex);
   if (!unlockMutex.IsAcquired()){
@@ -2379,64 +2445,36 @@ void PasswordSafeFrame::UnlockSafe(bool restoreUI, bool iconizeOnFailure)
   }
 
   if (m_sysTray->IsLocked()) {
-    bool bModalOpen;
-    int noTopLevelWindow = CountTopLevelWindowRecursively(this);
-    
-    bModalOpen = (noTopLevelWindow > 1); // More than one Top Level Window, the second one is modal
-#if (__WXOSX__)
-    const int TopLevelWindowLimit = 2; // OSX allow exit with one modal window open only
-#else
-# if (wxVERSION_NUMBER >= 3104)
-    const int TopLevelWindowLimit = 255; // Debian rasbery PI is handling 4 modal dialog without failure in wxWidgets 3.1.4, assume more is suitable
-# else
-    const int TopLevelWindowLimit = 1; // 3.0.5 do not run well when modal window is open (on Debian rasbery PI)
-# endif
-#endif
-    
-    do {
-      // Allow Exit only in case of one modal dialog present - on second one we crash.
-      // In most of the cases only one modal dialog is open.
-      SafeCombinationPromptDlg scp(nullptr, m_core, towxstring(m_core.GetCurFile()), (noTopLevelWindow <= TopLevelWindowLimit));
+    DestroyWrapper<SafeCombinationPromptDlg> scpWrapper(this, m_core, towxstring(m_core.GetCurFile()));
+    SafeCombinationPromptDlg* scp = scpWrapper.Get();
 
-      switch (scp.ShowModal()) {
-        case (wxID_OK):
-        {
-          if (ReloadDatabase(scp.GetPassword())) {
-            m_sysTray->SetTrayStatus(SystemTray::TrayStatus::UNLOCKED);
-          }
-          else {
-            // With modal dialog open we now have a problem, no data base open, but a modal dialog is open that might show an entry
-            CleanupAfterReloadFailure(true);
-            if(bModalOpen) {
-              if(noTopLevelWindow <= TopLevelWindowLimit)
-                CloseChildWindowRecursively(this, this);
-              else
-                wxMessageBox(_("Please close modal dialog manually"), _("Modal dialog open"), wxOK|wxICON_ERROR);
-            }
-            return;
-          }
-          bModalOpen = false; // To end the loop
-          break;
+    switch (scp->ShowModal()) {
+      case (wxID_OK):
+      {
+        if (ReloadDatabase(scp->GetPassword())) {
+          m_sysTray->SetTrayStatus(SystemTray::TrayStatus::UNLOCKED);
         }
-        case (wxID_EXIT):
-        {
-          if(bModalOpen)
-            CloseChildWindowRecursively(this, this);
-          
-          m_exitFromMenu = true; // not an exit request from menu, but OnCloseWindow requires this
-          wxCommandEvent event(wxEVT_CLOSE_WINDOW);
-          wxPostEvent(this, event);
+        else {
+          // With modal dialog open we now have a problem, no data base open, but a modal dialog is open that might show an entry
+          CleanupAfterReloadFailure(true);
+          if(!m_hiddenWindows.empty()) {
+            CloseAllWindows(&TimedTaskChain::CreateTaskChain([](){}), static_cast<CloseFlags>(CloseFlags::CLOSE_FORCED|CloseFlags::LEAVE_MAIN), nullptr);
+          }
           return;
         }
-        default:
-        {
-          if (!IsIconized() && iconizeOnFailure)
-            Iconize();
-          if(restoreUI && iconizeOnFailure)
-            return;
-        }
+        break;
       }
-    } while(bModalOpen && PWSprefs::GetInstance()->GetPref(PWSprefs::UseSystemTray));
+      case (wxID_CANCEL):
+      {
+        if (!IsIconized() && iconizeOnCancel) {
+          Iconize();
+        }
+        return; // allow to cancel dialog and left locked in any case
+      }
+      default:
+        wxASSERT_MSG(false, wxT("Unexpected SafeCombinationPromptDlg result"));
+        break;
+    }
 
     if (m_savedDBPrefs != wxEmptyString) {
       PWSprefs::GetInstance()->Load(tostringx(m_savedDBPrefs));
@@ -2445,9 +2483,8 @@ void PasswordSafeFrame::UnlockSafe(bool restoreUI, bool iconizeOnFailure)
   }
 
   if (restoreUI) {
-    if (!IsShown()) {
-      ShowWindowRecursively(this);
-    }
+    ShowHiddenWindows(true);
+
     if (IsIconized()) {
       Iconize(false);
     }
@@ -2456,12 +2493,16 @@ void PasswordSafeFrame::UnlockSafe(bool restoreUI, bool iconizeOnFailure)
     // Without this, modal dialogs like msgboxes lose focus and we end up in a different message loop than theirs.
     // See https://sourceforge.net/tracker/?func=detail&aid=3537985&group_id=41019&atid=429579
     wxSafeYield();
+    // for some reason, we have to restore main frame's position after Yeild, otherwise it could be restored at wrong position when window was moved before lock
+    wxGetApp().RestoreFrameCoords();
   }
   else if (IsShown()) { /* if it is somehow visible, show it correctly */
     Show(true);
   }
 
-  CreateMenubar(); // Recreate menubar to replace menu item 'Unlock Safe' by 'Lock Safe'
+  CreateMenubar(); // Recreate menubar to replace menu item 'Unlock' by 'Lock'
+  UpdateSearchBarVisibility();
+  m_AuiManager.Update();
 }
 
 void PasswordSafeFrame::SetFocus()
@@ -2475,7 +2516,7 @@ void PasswordSafeFrame::SetFocus()
 void PasswordSafeFrame::OnIconize(wxIconizeEvent& evt) {
 
   // If database was closed than there is nothing to do
-  if (!m_core.IsDbOpen()) {
+  if (!m_core.IsDbFileSet()) {
     return;
   }
 
@@ -2499,20 +2540,16 @@ void PasswordSafeFrame::OnIconize(wxIconizeEvent& evt) {
 #else
       LockDb();
 #endif
-      if (PWSprefs::GetInstance()->GetPref(PWSprefs::ClearClipboardOnMinimize)) {
-        Clipboard::GetInstance()->ClearCBData();
-      }
     }
     else {
       m_guiInfo->Save(this);
     }
+    if (PWSprefs::GetInstance()->GetPref(PWSprefs::ClearClipboardOnMinimize)) {
+      Clipboard::GetInstance()->ClearCBData();
+    }
   }
   else{
-#if wxCHECK_VERSION(2,9,5)
       CallAfter(&PasswordSafeFrame::UnlockSafe, true, true);
-#else
-      UnlockSafe(true, true);
-#endif
   }
 }
 
@@ -2556,17 +2593,23 @@ void PasswordSafeFrame::HideUI(bool lock)
     //We should not have to show up the icon manually if m_sysTray
     //can be notified of changes to PWSprefs::UseSystemTray
     m_sysTray->ShowIcon();
-    HideWindowRecursively(this);
+    HideTopLevelWindows();
   }
 }
 
 void PasswordSafeFrame::IconizeOrHideAndLock()
 {
-  bool bModalOpen = false;
+  // Close child Dialogs, hide if close failed:
+  auto children = GetChildren();
+  for (auto child : children)
+    if (dynamic_cast<wxDialog *>(child) != nullptr)
+      if (!child->Close(true))
+        child->Hide();
   
   if (PWSprefs::GetInstance()->GetPref(PWSprefs::UseSystemTray)) {
-    bModalOpen = (CountTopLevelWindowRecursively(this) > 1);
-    HideUI(true);
+    if (!m_sysTray->IsLocked()) {
+      HideUI(true);
+    }
   }
   else {
     TryIconize();
@@ -2575,14 +2618,6 @@ void PasswordSafeFrame::IconizeOrHideAndLock()
   // If not already locked by HideUI or OnIconize due to user preference than do it now
   if (m_sysTray->GetTrayStatus() == SystemTray::TrayStatus::UNLOCKED) {
     LockDb();
-  }
-  // In case of dialog open the menu cannot be called, so open dialog in advance in case we are using System Tray
-  if (bModalOpen) {
-#if wxCHECK_VERSION(2,9,5)
-    CallAfter(&PasswordSafeFrame::UnlockSafe, true, false);  // restore UI
-#else
-    UnlockSafe(true, false);  // restore UI
-#endif
   }
 }
 
@@ -2599,8 +2634,12 @@ void PasswordSafeFrame::LockDb()
   if (SaveAndClearDatabaseOnLock()) {
     m_sysTray->SetTrayStatus(SystemTray::TrayStatus::LOCKED);
 
-    CreateMenubar(); // Recreate menubar to replace menu item 'Lock Safe' by 'Unlock Safe'
+    CreateMenubar(); // Recreate menubar to replace menu item 'Lock' by 'Unlock'
   }
+
+  // Hide search bar to not populate any search results (see GitHub issue 375)
+  GetSearchBarPane().Hide();
+  m_AuiManager.Update();
 }
 
 void PasswordSafeFrame::SetTrayStatus(bool locked)
@@ -2636,7 +2675,7 @@ void PasswordSafeFrame::OnOpenRecentDB(wxCommandEvent& evt)
 
     case PWScore::USER_CANCEL:
       //In case the file doesn't exist, user will have to cancel
-      //the safe combination entry box.  In that call, fall through
+      //the master password entry box.  In that call, fall through
       //to the default case of removing the file from history
       if (pws_os::FileExists(stringT(dbfile)))
         break;          // An existing file doesn't need to be removed from history
@@ -2653,8 +2692,7 @@ void PasswordSafeFrame::OnOpenRecentDB(wxCommandEvent& evt)
 
 void PasswordSafeFrame::ViewReport(CReport& rpt)
 {
-  ViewReportDlg vr(this, &rpt);
-  vr.ShowModal();
+  ShowModalAndGetResult<ViewReportDlg>(this, &rpt);
 }
 
 void PasswordSafeFrame::OnVisitWebsite(wxCommandEvent&)
@@ -2669,7 +2707,7 @@ void PasswordSafeFrame::UpdateStatusBar()
   if(menuBar != nullptr) {
     menu = menuBar->FindItem(ID_CHANGEMODE);
   }
-  if (m_core.IsDbOpen()) {
+  if (m_core.IsDbFileSet()) {
     wxString text;
     // SB_DBLCLICK pane is set per selected entry, not here
 
@@ -2793,12 +2831,11 @@ void PasswordSafeFrame::ChangeFontPreference(const PWSprefs::StringPrefs fontPre
     if (newFont.IsOk()) {
       if (IsTreeView()) {
         m_tree->SetFont(newFont);
-        m_tree->Show(); // Updates the tree items font
+        m_tree->Refresh(); // Updates the tree items font
       }
       else {
         m_grid->SetDefaultCellFont(newFont);
-        // TODO: Update grid font
-        // Grid items font doesn't get updated by just calling Show() :-|
+        m_grid->Refresh(); // Updates the grid items font
       }
     }
   }
@@ -2830,6 +2867,50 @@ void PasswordSafeFrame::ChangeFontPreference(const PWSprefs::StringPrefs fontPre
   }
 }
 
+void PasswordSafeFrame::SaveLayoutPreferences()
+{
+  /*
+    The AUI manager provides a string with positional, size and docking
+    information for each pane that is managed by the AUI manager.
+    See the following for managed panes:
+      - PasswordSafeFrame::CreateControls()
+      - PasswordSafeFrame::CreateDragBar()
+      - PasswordSafeFrame::CreateMainToolbar()
+      - PasswordSafeFrame::CreateSearchBar()
+  */
+  auto layoutPreferences = m_AuiManager.SavePerspective();
+
+  /*
+    Example AUI layout preferences string with added line breaks at each occurence of the '|' character:
+    layout2|
+    name=mainview;caption=Main View;state=768;dir=5;layer=0;row=0;pos=0;prop=100000;bestw=20;besth=20;minw=-1;minh=-1;maxw=-1;maxh=-1;floatx=-1;floaty=-1;floatw=-1;floath=-1|
+    name=maintoolbar;caption=Toolleiste;state=2106044;dir=2;layer=10;row=0;pos=0;prop=100000;bestw=114;besth=358;minw=-1;minh=25;maxw=-1;maxh=-1;floatx=-1;floaty=-1;floatw=-1;floath=-1|
+    name=dragbar;caption=Dragleiste;state=2106044;dir=4;layer=10;row=0;pos=0;prop=100000;bestw=26;besth=207;minw=-1;minh=25;maxw=-1;maxh=-1;floatx=-1;floaty=-1;floatw=-1;floath=-1|
+    name=searchbar;caption=Suchleiste;state=2105984;dir=3;layer=1;row=0;pos=0;prop=100000;bestw=10;besth=35;minw=-1;minh=35;maxw=-1;maxh=-1;floatx=-1;floaty=-1;floatw=-1;floath=-1|
+    dock_size(5,0,0)=22|
+    dock_size(4,10,0)=28|
+    dock_size(2,10,0)=116|
+    dock_size(3,1,0)=37|
+  */
+  layoutPreferences.Replace("|", "|\n");
+  PWSprefs::GetInstance()->SetPrefLayout(tostdstring(layoutPreferences));
+}
+
+bool PasswordSafeFrame::LoadLayoutPreferences()
+{
+  auto layoutPreferences = PWSprefs::GetInstance()->GetPrefLayout();
+
+  if (layoutPreferences.empty()) {
+    // If there are no layout preferences in the configuration file 
+    // we continue with the default settings/behavior of wxAUI.
+    return true;
+  }
+
+  wxString auiLayoutPreferences = towxstring(layoutPreferences);
+  auiLayoutPreferences.Replace("|\n", "|");
+  return m_AuiManager.LoadPerspective(auiLayoutPreferences);
+}
+
 void PasswordSafeFrame::SetFilterFindEntries(UUIDVector *pvFoundUUIDs)
 {
   // If the "Show entries from last Find" is active, we should not change this
@@ -2851,6 +2932,279 @@ void PasswordSafeFrame::ResetFilters()
   m_FilterManager.SetFilterFindEntries(nullptr);
 }
 
+/**
+ Close all visible top level windows
+ 
+ @param taskChain chain to use when closing multiple dialogs
+ @param flags close options
+ @param onFinish if set, will be called after closing all windows
+ 
+ Here we have to use taskChain, because when closing multiple dialogs, 
+ CallAfter is not enough to allow dialog to finish result processing and break event loop
+*/
+void PasswordSafeFrame::CloseAllWindows(TimedTaskChain* taskChain, CloseFlags flags, std::function<void(bool success)> onFinish)
+{
+  // we should show windows before processing
+  bool delayClose = false;
+  if (!m_hiddenWindows.empty()) {
+    ShowHiddenWindows(false);
+    flags = static_cast<CloseFlags>(flags | HIDE_ON_VETO);
+    delayClose = true;
+  }
+
+  if (!m_closeDisabler) {
+    m_closeDisabler = new wxWindowDisabler();
+    m_pengingCloseWindow = nullptr;
+    if (delayClose) {
+      // some windows (such as wxHtmlHelpDialog need more cycles for activation), delay close processing after show
+      taskChain->then([taskChain, flags, onFinish, this]{
+        CloseAllWindows(taskChain, flags, onFinish);
+      });
+      return; // exit here without unlocking disabler
+    }
+  }
+  
+  auto tlvList = GetTopLevelWindowsList();
+  auto itr = tlvList.rbegin();
+  const auto endItr = ((flags & CloseFlags::LEAVE_MAIN) == CloseFlags::LEAVE_MAIN) ? --tlvList.rend() : tlvList.rend();
+  const auto lastWindowItr = --tlvList.rend();
+  bool vetoed = false;
+  while (itr != endItr) {
+    wxTopLevelWindow* win = *itr;
+    // In case we got here via the About Dialog window, don't close it here. It will get special handling later.
+    if (win && (dynamic_cast<AboutDlg *>(win) == nullptr)) {
+      if (win->IsShown()) {
+        if (win == m_pengingCloseWindow) { // close already sheduled, but still not done
+          pws_os::Trace(L"Waiting for window close <%ls> (%ls), flags=%d\n", ToStr(win->GetTitle()), ToStr(win->GetName()), flags);
+          taskChain->then([taskChain, flags, onFinish, this]{
+            CloseAllWindows(taskChain, flags, onFinish);
+          });
+          return; // exit here without unlocking disabler
+        }
+
+        pws_os::Trace(L"Closing <%ls> (%ls), flags=%d\n", ToStr(win->GetTitle()), ToStr(win->GetName()), flags);
+        m_pengingCloseWindow = win;
+        if (win->Close((flags & CloseFlags::CLOSE_FORCED) == CloseFlags::CLOSE_FORCED)) {
+          if (itr == lastWindowItr) {
+            // main windows closed, no need to schedule new check
+            break;
+          }
+          else {
+            // if main window still alive, captured "this" should be valid
+            taskChain->then([taskChain, flags, onFinish, this]{
+              CloseAllWindows(taskChain, flags, onFinish);
+            });
+            return; // exit here without unlocking disabler
+          }
+        }
+        else {
+          pws_os::Trace(L"Close for <%ls> (%ls) vetoed, flags=%d\n", ToStr(win->GetTitle()), ToStr(win->GetName()), flags);
+          vetoed = true;
+          break;
+        }
+      }
+      else {
+        pws_os::Trace(L"Skip closing of hidden window <%ls> (%ls)\n", ToStr(win->GetTitle()), ToStr(win->GetName()));
+      }
+    }
+    ++itr;
+  }
+  delete m_closeDisabler;
+  m_closeDisabler = nullptr;
+  m_pengingCloseWindow = nullptr;
+  
+  if (vetoed && (flags & CloseFlags::HIDE_ON_VETO) == CloseFlags::HIDE_ON_VETO) {
+    HideTopLevelWindows();
+  }
+  
+  if (onFinish) {
+    onFinish(!vetoed);
+  }
+}
+
+bool PasswordSafeFrame::IsCloseInProgress() const
+{
+  return !!m_closeDisabler;
+}
+
+
+void PasswordSafeFrame::CloseDB(std::function<void(bool)> callback)
+{
+  PWSprefs *prefs = PWSprefs::GetInstance();
+
+  // Save Application related preferences
+  prefs->SaveApplicationPreferences();
+  if( m_core.IsDbFileSet() ) {
+    int rc = SaveIfChanged();
+    if (rc != PWScore::SUCCESS) {
+      if (callback != nullptr)
+        CallAfter([callback]() {callback(false);});
+      return;
+    }
+
+    // Force close all active dialogs
+    CloseAllWindows(&TimedTaskChain::CreateTaskChain([](){}),
+      CloseFlags::LEAVE_MAIN,
+      [this, callback](bool success) { // we don't close main window, so `this` will be valid
+        if (success) {
+          m_core.SafeUnlockCurFile();
+          m_core.SetCurFile(wxEmptyString);
+          // Reset core and clear ALL associated data
+          m_core.ReInit();
+          // clear the application data before ending
+          ClearAppData();
+          SetTitle(wxEmptyString);
+          m_sysTray->SetTrayStatus(SystemTray::TrayStatus::CLOSED);
+          // Preserve user preference, which gets overwritten by closing the search bar.
+          const auto showSearchBar = PWSprefs::GetInstance()->GetPref(PWSprefs::FindToolBarActive);
+          wxCommandEvent dummyEv;
+          m_search->OnSearchClose(dummyEv); // fix github issue 375
+          m_core.SetReadOnly(false);
+          UpdateStatusBar();
+          UpdateMenuBar();
+          PWSprefs::GetInstance()->SetPref(PWSprefs::FindToolBarActive, showSearchBar);
+        }
+        else {
+          wxMessageBox(_("Can't close database. There are unsaved changes in opened dialogs."), wxTheApp->GetAppName(), wxOK | wxICON_WARNING, this);
+        }
+        if (callback) {
+          CallAfter([callback, success]() {callback(success);});
+        }
+      });
+  }
+  else {
+    if (callback) {
+      CallAfter([callback]() {callback(true);});
+    }
+  }
+}
+
+std::vector<wxTopLevelWindow*> PasswordSafeFrame::GetTopLevelWindowsList() const
+{
+  std::vector<wxTopLevelWindow*> hiddenWindows;
+  hiddenWindows.reserve(wxTopLevelWindows.size());
+  // wxTopLevelWindows is global exported list of top level windows
+  for (const auto tlv : wxTopLevelWindows) {
+    auto* win = wxDynamicCast(tlv, wxTopLevelWindow);
+    if (win && win->IsShown()) {
+      hiddenWindows.push_back(win);
+    }
+  }
+  // but some dialogs aren't registered in wxTopLevelWindows, so get them from dialog tracker
+  // it's O(n^2), but usually we have less than 10
+  for (const auto& dialog : m_shownDialogs) {
+    if (!dialog) {
+      continue;
+    }
+    bool shown = dialog->IsShown();
+#if defined(__WXGTK__)
+    if (!shown && wxDynamicCast(dialog, wxMessageDialog)) {
+      // wxMessageDialog don't set needed m_shown and m_modalShowing flags in ShowModal, so just log it
+      // (we even can't close them, because m_modalShowing isn't set and Close event isn't processed)
+      pws_os::Trace(L"Message dialog <%ls> (%ls) can't be hidden/closed\n", ToStr(dialog->GetTitle()), ToStr(dialog->GetName()));
+      continue;
+    }
+#endif
+    if (shown) {
+      bool registered = std::find(hiddenWindows.begin(), hiddenWindows.end(), dialog) != hiddenWindows.end();
+      if (!registered) {
+        pws_os::Trace(L"Dialog not registered in wxTopLevelWindows <%ls> (%ls)\n", ToStr(dialog->GetTitle()), ToStr(dialog->GetName()));
+        // attempt to register window after it's parent
+        const auto parent = dialog->GetParent();
+        auto parentIter = std::find(hiddenWindows.begin(), hiddenWindows.end(), parent);
+        if (parentIter != hiddenWindows.end()) {
+          ++parentIter;
+        }
+        hiddenWindows.insert(parentIter, dialog);
+      }
+    }
+  }
+  return hiddenWindows;
+}
+
+void PasswordSafeFrame::HideTopLevelWindows()
+{
+  auto windows = GetTopLevelWindowsList();
+  // hiding windows in reverse order
+  for (auto itr = windows.rbegin(); itr != windows.rend(); ++itr) {
+    wxTopLevelWindow* win = *itr;
+    //Don't call Hide() here, which just calls Show(false), which is overridden in
+    //derived classes, and wxDialog actually cancels the modal loop and closes the window
+    pws_os::Trace(L"Hide window <%ls> (%ls)\n", ToStr(win->GetTitle()), ToStr(win->GetName()));
+    win->ClearBackground();
+    win->Show(false);
+  }
+  m_hiddenWindows = std::move(windows);
+}
+
+void PasswordSafeFrame::ShowHiddenWindows(bool raise)
+{
+  for(const auto win : m_hiddenWindows) {
+    pws_os::Trace(L"Show window <%ls>\n", ToStr(win->GetTitle()));
+    win->Show(true);
+    if (raise) {
+      win->Raise();
+    }
+    win->Update();
+  }
+  m_hiddenWindows.clear();
+}
+
+wxTopLevelWindow* PasswordSafeFrame::GetTopWindow() const {
+  if (!m_hiddenWindows.empty()) {
+    return m_hiddenWindows.back();
+  }
+  else {
+    auto windows = GetTopLevelWindowsList();
+    if (!windows.empty()) {
+      return windows.back();
+    }
+  }
+  return nullptr;
+}
+
+int PasswordSafeFrame::Enter(wxDialog* dialog)
+{
+  if (dialog) {
+    m_shownDialogs.push_back(dialog);
+  }
+  return wxID_NONE;
+}
+
+void PasswordSafeFrame::Exit(wxDialog* dialog)
+{
+  // modal dilaogs should be closed in reverse show order
+  if (!m_shownDialogs.empty() && m_shownDialogs.back() == dialog) {
+    m_shownDialogs.pop_back();
+  }
+  else {
+    wxASSERT_MSG(false, wxT("Closed dialog isn't on top of the list "));
+    auto iter = std::find(m_shownDialogs.begin(), m_shownDialogs.end(), dialog);
+    if (iter != m_shownDialogs.end()) {
+      m_shownDialogs.erase(iter);
+    }
+  }
+}
+
+/**
+@return true, when opened dialogs can be safely closed
+*/
+bool PasswordSafeFrame::CanCloseDialogs() const
+{
+#if defined(__WXGTK__)
+    for (const auto& dialog : m_shownDialogs) {
+      if (!dialog) {
+        continue;
+      }
+      if (!dialog->IsShown() && wxDynamicCast(dialog, wxMessageDialog)) {
+        // we can't close wxMessageDialog in wx3.0.5 GTK, see details in GetTopLevelWindowsList
+        pws_os::Trace(L"Message dialog <%ls> (%ls) can't be hidden/closed\n", ToStr(dialog->GetTitle()), ToStr(dialog->GetName()));
+        return false;
+      }
+    }
+#endif
+  return true;
+}
   //-----------------------------------------------------------------
   // Remove all DialogBlock-generated stubs below this line, as we
   // already have them implemented in main*.cpp

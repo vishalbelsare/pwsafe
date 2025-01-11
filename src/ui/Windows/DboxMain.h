@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -31,6 +31,8 @@
 #include "AdvancedDlg.h"
 #include "FontsDialog.h"
 #include "SystemTray.h"
+#include "ScreenCaptureStateControl.h"
+#include "InvokeGuiThreadSupport.h"
 
 #include "core/UIinterface.h"
 #include "core/PWScore.h"
@@ -56,6 +58,13 @@ DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2  ((DPI_AWARENESS_CONTEXT)-4)
 #endif
+
+// When pwsafe itself posts WM_SYSCOMMAND wParam=SC_RESTORE to restore on lock,
+// specify this LPARAM to force the restore to be minimized. This is used when
+// pwsafe is in non-systray "taskbar" mode, where lock causes an immediate
+// presentation of the password entry dialog in a minimized state so it
+// immediately appears as a minimized pwsafe taskbar app window.
+#define PWSAFE_SC_LPARAM_INIT_APP_WINDOW_MINIMIZED ((LPARAM)0xFFFEFFFE)
 
 // For ShutdownBlockReasonCreate & ShutdownBlockReasonDestroy
 typedef BOOL (WINAPI *PSBR_CREATE) (HWND, LPCWSTR);
@@ -110,7 +119,63 @@ enum {
 // GCP read only flags - tested via AND, set via OR, must be power of 2.
 enum {GCP_READONLY = 1,
       GCP_FORCEREADONLY = 2,
-      GCP_HIDEREADONLY = 4};
+      GCP_HIDEREADONLY = 4,
+      GCP_APP_WINDOW = 8};
+
+struct ClipboardDataSource
+{
+  enum Type
+  {
+    None = 0,
+
+    // For clipboard sources that are solely/directly from DB field,
+    // specify the CItem::FieldType item here.
+    Group = CItemData::GROUP,
+    TITLE = CItemData::TITLE,
+    User = CItemData::USER,
+    Notes = CItemData::NOTES,
+    Password = CItemData::PASSWORD,
+    Url = CItemData::URL,
+    Email = CItemData::EMAIL,
+    RunCmd = CItemData::RUNCMD,
+
+    // Derived sources (sources not directly/solely from a DB field) must appear
+    // here, right after after DerivedSourceFirst. A derived source can also
+    // represent a clipboard-related action such as clearing the clipboard.
+    DerivedSourceFirst = 0x4000, // Must be larger than CItemData::LAST_FIELD.
+    ClearClipboard,
+    PasswordHistoryList,
+    AuthCode
+  };
+
+  ClipboardDataSource() : t(None) {}
+  ClipboardDataSource(Type t) : t(t) {}
+  ClipboardDataSource(CItemData::FieldType ft) : t(static_cast<Type>(ft)) {}
+  ClipboardDataSource(int i) : t(static_cast<Type>(i)) {}
+
+  CItemData::FieldType GetFieldType() const {
+    ASSERT(IsField());
+    return static_cast<CItemData::FieldType>(t);
+  }
+
+  Type GetDerivedType() const {
+    ASSERT(!IsField());
+    return static_cast<Type>(t);
+  }
+
+  int GetAsInt() const { return static_cast<int>(t); }
+
+  operator Type() const { GetDerivedType(); }
+  operator CItemData::FieldType() const { return GetFieldType(); }
+  operator int() const { return GetAsInt(); }
+
+  bool IsField() const { return t < DerivedSourceFirst; }
+  bool IsDerived() const { return !IsField(); }
+  bool IsNone() const { return t == None; }
+  void Clear() { t = None; }
+
+  Type t;
+};
 
 class CDDObList;
 class ExpiredList;
@@ -118,7 +183,7 @@ class CAddEdit_PropertySheet;
 class CPasskeyEntry;
 
 //-----------------------------------------------------------------------------
-class DboxMain : public CDialog, public Observer
+class DboxMain : public CDialog, public Observer, public CInvokeGuiThreadSupport
 {
 public:
   DECLARE_DYNAMIC(DboxMain)
@@ -246,15 +311,19 @@ public:
                      const bool &bDoAutotype);
   BOOL SendEmail(const CString &cs_email);
   void SetInitialDatabaseDisplay();
-  void U3ExitNow(); // called when U3AppStop sends message to Pwsafe Listener
-  bool ExitRequested() const {return m_inExit;}
   void AutoResizeColumns();
   void ResetIdleLockCounter(UINT event = WM_SIZE); // default arg always resets
-  bool ClearClipboardData() {return m_clipboard.ClearCBData();}
+  bool ClearClipboardData() {
+    StopAuthCodeUpdateClipboardTimer();
+    return m_clipboard.ClearCBData() == SuccessSensitivePresent;
+  }
   bool SetClipboardData(const StringX &data)
   {return m_clipboard.SetData(data.c_str());}
+  ClipboardStatus GetLastSensitiveClipboardItemStatus()
+  {return m_clipboard.GetLastSensitiveItemPresent();}
   void AddDDEntries(CDDObList &in_oblist, const StringX &DropGroup,
     const std::vector<StringX> &vsxEmptyGroups);
+  PWSTotp::TOTP_Result GetTwoFactoryAuthenticationCode(const CItemData& ci, StringX& sxAuthCode, double* pRatio = nullptr);
   StringX GetUniqueTitle(const StringX &group, const StringX &title,
                          const StringX &user, const int IDS_MESSAGE) const
   {return m_core.GetUniqueTitle(group, title, user, IDS_MESSAGE);}
@@ -287,7 +356,7 @@ public:
   void CreateShortcutEntry(CItemData *pci, const StringX &cs_group,
                            const StringX &cs_title, const StringX &cs_user,
                            StringX &sxNewDBPrefsString);
-  bool SetNotesWindow(const CPoint ptClient, const bool bVisible = true);
+  bool SetInfoDisplay(const CPoint ptClient, const bool bVisible = true);
   bool IsFilterActive() const {return m_bFilterActive;}
   int GetNumPassedFiltering() const {return m_bNumPassedFiltering;}
   CItemData *GetLastSelected() const;
@@ -305,7 +374,7 @@ public:
 
   void DoAutoType(const StringX &sx_autotype, 
                   const std::vector<size_t> &vactionverboffsets);
-  void UpdateLastClipboardAction(const int iaction);
+  void UpdateLastClipboardAction(const ClipboardDataSource& cds);
   void PlaceWindow(CWnd *pWnd, CRect *pRect, UINT uiShowCmd);
   void SetDCAText(CItemData *pci = NULL);
   void OnItemSelected(NMHDR *pNotifyStruct, LRESULT *pLResult, const bool bTreeView);
@@ -470,7 +539,6 @@ public:
   bool GetInitialTransparencyState() { return m_bOnStartupTransparancyEnabled; }
   bool SetLayered(CWnd *pWnd, const int value = -1);
   void SetThreadDpiAwarenessContext();
-
  protected:
    friend class CSetDBID;  // To access icon creation etc.
 
@@ -589,6 +657,7 @@ public:
   LRESULT OnExecuteFilters(WPARAM wParam, LPARAM lParam);
   LRESULT OnApplyEditChanges(WPARAM wParam, LPARAM lParam);
   LRESULT OnDroppedFile(WPARAM wParam, LPARAM lParam);
+  LRESULT OnInvokeUiThread(WPARAM wParam, LPARAM lParam);
 
   void UpdateAlwaysOnTop();
   void ClearAppData(const bool bClearMRE = true);
@@ -630,6 +699,12 @@ public:
 
   void SetupUserFonts();
   void ChangeFont(const CFontsDialog::FontType iType);
+
+  void StartAuthCodeUpdateClipboardTimer(const pws_os::CUUID& uuidEntry);
+  void StopAuthCodeUpdateClipboardTimer();
+  void OnTwoFactorAuthCodeUpdateClipboardTimer();
+  pws_os::CUUID m_uuidEntryTwoFactorAutoCopyToClipboard;
+  StringX m_sxLastAuthCode;
 
   // Generated message map functions
   //{{AFX_MSG(DboxMain)
@@ -676,6 +751,7 @@ public:
   afx_msg void OnPasswordSafeWebsite();
   afx_msg void OnBrowse();
   afx_msg void OnBrowsePlus();
+  afx_msg void OnBrowseAlt();
   afx_msg void OnSendEmail();
   afx_msg void OnCopyUsername();
   afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
@@ -689,11 +765,13 @@ public:
   afx_msg void OnHeaderEndDrag(NMHDR *pNotifyStruct, LRESULT *pLResult);
   afx_msg void OnCopyPassword();
   afx_msg void OnCopyPasswordMinimize();
-  afx_msg void OnDisplayPswdSubset();
+  afx_msg void OnDisplayPasswordSubset();
   afx_msg void OnCopyNotes();
   afx_msg void OnCopyURL();
   afx_msg void OnCopyEmail();
   afx_msg void OnCopyRunCommand();
+  afx_msg void OnViewTwoFactorAuthCode();
+  afx_msg void OnCopyTwoFactorAuthCode();
   afx_msg void OnNew();
   afx_msg void OnOpen();
   afx_msg void OnClose();
@@ -879,11 +957,14 @@ private:
 
   StringX m_sxOriginalGroup;                 // Needed when doing recursive deletions of groups
 
-  bool m_inExit; // help U3ExitNow
   std::vector<bool> m_vGroupDisplayState; // used to save/restore display state over minimize/restore
   StringX m_savedDBprefs;                 // used across minimize/restore events
+  bool m_bMainWindowWasDisabled;          // used to save WS_DISABLED state of main app window.
 
   PWSclipboard m_clipboard;
+
+  bool m_bScreenCaptureStatusBarTimerEnabled;
+  LONG m_lScrCapStatusBarBlinkRemainingMsecs;
 
   // Split up OnOK to support various ways to exit
   int SaveDatabaseOnExit(const SaveType saveType);
@@ -900,14 +981,14 @@ private:
   int SaveImmediately();
   void CheckExpireList(const bool bAtOpen = false); // Upon open, timer + menu, check list, show exp.
   void TellUserAboutExpiredPasswords();
-  bool RestoreWindowsData(bool bUpdateWindows, bool bShow = true);
+  bool RestoreWindowsData(bool bUpdateWindows, bool bShow = true, bool bIsAppWindow = false);
   void UpdateAccessTime(const pws_os::CUUID &uuid);
   void RestoreGroupDisplayState();
   std::vector<bool> GetGroupDisplayState(); // get current display state from window
   void SetGroupDisplayState(const std::vector<bool> &displaystatus); // changes display
   void SetDefaultColumns();  // default order
-  void SetColumns(const CString cs_ListColumns);
-  void SetColumnWidths(const CString cs_ListColumnsWidths);
+  void SetColumns(const CString& cs_ListColumns);
+  void SetColumnWidths(const CString& cs_ListColumnsWidths);
   void SetupColumnChooser(const bool bShowHide);
   void AddColumn(const int iType, const int iIndex);
   void DeleteColumn(const int iType);
@@ -919,12 +1000,14 @@ private:
   void SetupSpecialShortcuts();
   void UpdateEditViewAccelerator(bool isRO);
   bool ProcessLanguageMenu(CMenu *pPopupMenu);
-  void DoBrowse(const bool bDoAutotype, const bool bSendEmail);
+  void DoBrowse(bool bDoAutotype, bool bSendEmail, bool bForceAlt);
   bool GetSubtreeEntriesProtectedStatus(int &numProtected, int &numUnprotected);
   void ChangeSubtreeEntriesProtectStatus(const UINT nID);
-  void CopyDataToClipBoard(const CItemData::FieldType ft, const bool bSpecial = false);
+  void CopyDataToClipBoard(ClipboardDataSource cds, const bool bSpecial = false);
   void RestoreWindows(); // extended ShowWindow(SW_RESTORE), sort of
   void CancelPendingPasswordDialog();
+  void StartForceAllowCaptureBitmapBlinkTimer(bool bEnable);
+  void UpdateForceAllowCaptureHandling();
 
   void RemoveFromGUI(CItemData &ci);
   void AddToGUI(CItemData &ci);
@@ -951,7 +1034,7 @@ private:
 
   // Images in List View
   bool m_bImageInLV;
-  CInfoDisplay *m_pNotesDisplay;
+  CInfoDisplay *m_pInfoDisplay;
 
   // Filters
   bool m_bFilterActive, m_bUnsavedDisplayed, m_bExpireDisplayed, m_bFindFilterDisplayed;
@@ -1034,7 +1117,7 @@ private:
 
   // Change languages on the fly
   void SetLanguage(LCID lcid);
-  int m_ilastaction;  // Last action
+  ClipboardDataSource m_ilastaction;  // Last action
   void SetDragbarToolTips();
 
   // Database index on Tray icon

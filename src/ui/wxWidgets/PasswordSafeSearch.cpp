@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -24,7 +24,7 @@
 
 #include "core/PWHistory.h"
 #include "core/Util.h"
-#include "core/PWHistory.h"
+#include "core/SearchUtils.h"
 #include "core/core.h"
 #include "wxUtilities.h"
 
@@ -33,7 +33,6 @@
 #include "AdvancedSelectionDlg.h"
 #include "PWSafeApp.h"
 #include "SelectionCriteria.h"
-#include "SearchUtils.h"
 #include "ViewReportDlg.h"
 
 ////@begin XPM images
@@ -77,10 +76,10 @@ enum {
 struct SearchBarToolInfo {
   wxWindowID id;
   const wxString tooltip;
-  const char** bitmap_normal;
-  const char** bitmap_disabled;
-  const char** bitmap_classic;
-  const char** bitmap_classic_disabled;
+  const char* const* const bitmap_normal;
+  const char* const* const bitmap_disabled;
+  const char* const* const bitmap_classic;
+  const char* const* const bitmap_classic_disabled;
   wxItemKind tool_type;
 
   SearchBarToolInfo() :
@@ -91,8 +90,8 @@ struct SearchBarToolInfo {
 
   SearchBarToolInfo(
     wxWindowID id, const wxString &tooltip,
-    const char** bitmap_normal, const char** bitmap_disabled,
-    const char** bitmap_classic, const char** bitmap_classic_disabled,
+    const char* const* const bitmap_normal, const char* const* bitmap_disabled,
+    const char* const* const bitmap_classic, const char* const* bitmap_classic_disabled,
     wxItemKind tool_type
   ) :
     id(id), tooltip(tooltip),
@@ -227,6 +226,7 @@ void PasswordSafeSearch::OnDoSearchT(Iter begin, Iter end, Accessor afn)
   }
 
   UpdateView();
+  txtCtrl->SelectNone();
 
   // Replace the "Find" menu item under Edit menu by "Find Next" and "Find Previous"
   wxMenu* editMenu = nullptr;
@@ -251,6 +251,8 @@ void PasswordSafeSearch::UpdateView()
     m_parentFrame->SelectItem(*m_searchPointer);
   }
   statusArea->SetLabel(m_searchPointer.GetLabel());
+
+  SetFocusIntoEditField();
 }
 
 void PasswordSafeSearch::FindNext()
@@ -435,18 +437,7 @@ IMPLEMENT_CLASS_TEMPLATE( AdvancedSelectionDlg, wxDialog, FindDlgType )
 void PasswordSafeSearch::OnAdvancedSearchOptions(wxCommandEvent& event)
 {
   if (event.IsChecked()) {
-    m_criteria->Clean();
-    AdvancedSelectionDlg<FindDlgType> dlg(m_parentFrame, m_criteria);
-    if (dlg.ShowModal() == wxID_OK) {
-      // No check for m_criteria.IsDirty() here because we want to start a new search
-      // whether or not the group/field selection were modified because user just
-      // toggled the "Advanced Options" on.  It was OFF before just now.
-      m_searchPointer.Clear();
-    }
-    else {
-      // No change, but need to toggle off "Advanced Options" button manually
-      ToggleTool(event.GetId(), false);
-    }
+    CallAfter(&PasswordSafeSearch::GetAdvancedSearchOptions, event.GetId());
   }
   else {
     // Advanced Options were toggled off.  Start a new search next time
@@ -454,10 +445,29 @@ void PasswordSafeSearch::OnAdvancedSearchOptions(wxCommandEvent& event)
   }
 }
 
+void PasswordSafeSearch::GetAdvancedSearchOptions(int controlId)
+{
+  m_criteria->Clean();
+  if (ShowModalAndGetResult<AdvancedSelectionDlg<FindDlgType>>(wxGetTopLevelParent(this), m_criteria) == wxID_OK) {
+    // No check for m_criteria.IsDirty() here because we want to start a new search
+    // whether or not the group/field selection were modified because user just
+    // toggled the "Advanced Options" on.  It was OFF before just now.
+    m_searchPointer.Clear();
+  }
+  else if (!IsCloseInProgress()) {
+    // No change, but need to toggle off "Advanced Options" button manually
+    ToggleTool(controlId, false);
+  }
+}
 /*!
  * wxEVT_COMMAND_TOOL_CLICKED event handler for ID_FIND_CREATE_REPORT
  */
 void PasswordSafeSearch::OnToolBarFindReport(wxCommandEvent& event)
+{
+  CallAfter(&PasswordSafeSearch::DoToolBarFindReport, event.GetId());
+}
+
+void PasswordSafeSearch::DoToolBarFindReport(int controlId)
 {
   wxSearchCtrl* txtCtrl = wxDynamicCast(FindControl(ID_FIND_EDITBOX), wxSearchCtrl);
   wxCHECK_RET(txtCtrl, wxT("Could not get search control of toolbar"));
@@ -472,7 +482,7 @@ void PasswordSafeSearch::OnToolBarFindReport(wxCommandEvent& event)
   report.StartReport(IDSC_RPTFIND, m_parentFrame->GetCurrentFile().c_str());
   
   if(m_criteria) {
-    m_criteria->ReportAdvancedOptions(&report, _("Find"), m_parentFrame->GetCurrentFile().c_str());
+    m_criteria->ReportAdvancedOptions(&report, _("found"), m_parentFrame->GetCurrentFile().c_str());
   }
   
   stringT line, searchT(searchText.c_str()), searchCaseT(GetToolToggled(ID_FIND_IGNORE_CASE) ? _("(case-sensitive)"): _("(not case-sensitive)"));
@@ -503,10 +513,11 @@ void PasswordSafeSearch::OnToolBarFindReport(wxCommandEvent& event)
   report.WriteLine();
   report.EndReport();
   
-  ViewReportDlg vr(m_parentFrame, &report);
-  vr.ShowModal();
-  // set back toggle
-  ToggleTool(event.GetId(), false);
+  ShowModalAndGetResult<ViewReportDlg>(wxGetTopLevelParent(this), &report);
+  if (!IsCloseInProgress()) {
+    // set back toggle
+    ToggleTool(controlId, false);
+  }
 }
 
 /**
@@ -602,31 +613,47 @@ bool PasswordSafeSearch::CreateSearchBar()
  * The following keystroke events are handled specially.
  * - Escape Key: Hides the search toolbar.
  * - Ctrl-C Key: Copies marked text from search text field or password of selected item.
+ * - Ctrl-U Key: Copies the username of selected item.
+ * - Ctrl-X Key: Cuts marked text from search text field or clears the search text field.
  * 
  * @param event holds information about key event.
  * @see <a href="https://docs.wxwidgets.org/3.1/classwx_key_event.html">wxKeyEvent Class Reference</a>
  */
 void PasswordSafeSearch::OnChar(wxKeyEvent& event)
 {
-  if (event.GetKeyCode() == WXK_ESCAPE) {
+  auto keyName = event.GetUnicodeKey();
+
+  if (keyName == WXK_ESCAPE) {
     HideSearchToolbar();
   }
   else if ((event.GetModifiers() == wxMOD_CONTROL) && 
-    ((event.GetKeyCode() == wxT('c')) || (event.GetKeyCode() == wxT('C')))) {
+            wxString("cCuUxX").Contains(keyName)) {
 
     auto control = wxDynamicCast(FindControl(ID_FIND_EDITBOX), wxSearchCtrl);
 
     if (control) {
-      if (control->CanCopy()) {
+      if (control->CanCopy() || control->CanCut()) {
         // If the user has marked some text in the search text field,
-        // then normal copy event shall be handled.
+        // then normal copy and cut event shall be handled.
         event.Skip();
       }
-      else {
+      else if (wxString("cC").Contains(keyName)) {
         // If nothing is marked in search text field,
         // the item's password shall be copied.
         wxCommandEvent copy_password_event(wxEVT_MENU, ID_COPYPASSWORD);
         m_parentFrame->GetEventHandler()->AddPendingEvent(copy_password_event);
+      }
+      else if (wxString("uU").Contains(keyName)) {
+        // If nothing is marked in search text field,
+        // the item's username shall be copied.
+        wxCommandEvent copy_username_event(wxEVT_MENU, ID_COPYUSERNAME);
+        m_parentFrame->GetEventHandler()->AddPendingEvent(copy_username_event);
+      }
+      else if (wxString("xX").Contains(keyName)) {
+        // If nothing is marked in search text field,
+        // the search text field shall be cleared.
+        wxCommandEvent search_clear_event(wxEVT_MENU, ID_FIND_CLEAR);
+        GetEventHandler()->AddPendingEvent(search_clear_event);
       }
     }
   }

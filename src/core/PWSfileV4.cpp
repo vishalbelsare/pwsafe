@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2013-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2013-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -13,7 +13,7 @@
 #include "PWScore.h"
 #include "PWSFilters.h"
 #include "PWSdirs.h"
-#include "PWSprefs.h"
+#include "PWSLog.h"
 #include "core.h"
 #include "crypto/pbkdf2.h"
 #include "crypto/KeyWrap.h"
@@ -24,7 +24,6 @@
 
 #include "os/debug.h"
 #include "os/file.h"
-#include "os/logit.h"
 #include "os/utf8conv.h"
 
 #include "XML/XMLDefs.h"  // Required if testing "USE_XML_LIBRARY"
@@ -325,7 +324,7 @@ size_t PWSfileV4::ReadContent(Fish *fish,  unsigned char *cbcbuffer,
   ASSERT(clen > 0 && fish != nullptr && cbcbuffer != nullptr);
   // round up clen to nearest BS:
   const unsigned int BS = fish->GetBlockSize();
-  size_t blen = (clen/BS + 1)*BS;
+  size_t blen = roundUp(clen, BS);
 
   content = new unsigned char[blen]; // caller's responsible for delete[]
   return _readcbc(m_fd, content, blen, fish, cbcbuffer);
@@ -421,6 +420,7 @@ void PWSfileV4::StretchKey(const unsigned char *salt, unsigned long saltLen,
 const short VersionNum = 0x0400;
 
 struct PWSfileV4::CKeyBlocks::KeyBlockFinder {
+  KeyBlockFinder(const KeyBlockFinder&) = default;
   KeyBlockFinder(const StringX &passkey) : passkey(passkey) {}
 
   bool operator()(const KeyBlock &kb) {

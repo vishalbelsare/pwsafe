@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -11,7 +11,7 @@
 #ifndef __PWCHARPOOL_H
 #define __PWCHARPOOL_H
 
-#include "os/typedefs.h"
+#include "../os/typedefs.h"
 #include "StringX.h"
 #include "PWPolicy.h"
 
@@ -28,7 +28,7 @@
  * CPasswordCharPool pwgen(policy);
  * StringX pwd = pwgen.MakePassword();
  *
- * CheckPassword() is used to verify the strength of existing passwords,
+ * CheckMasterPassword() is used to verify the strength of existing passwords,
  * i.e., the password used to protect the database.
  */
 
@@ -40,7 +40,7 @@ public:
 
   ~CPasswordCharPool();
 
-  static bool CheckPassword(const StringX &pwd, StringX &error);
+  static bool CheckMasterPassword(const StringX &pwd, StringX &error);
   static stringT GetDefaultSymbols();
   static stringT GetEasyVisionSymbols() {return easyvision_symbol_chars;}
   static stringT GetPronounceableSymbols() {return pronounceable_symbol_chars;}

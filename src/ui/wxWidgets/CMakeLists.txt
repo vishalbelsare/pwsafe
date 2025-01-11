@@ -51,6 +51,7 @@ list(APPEND PWSAFE_HDR_LIST
     src/ui/wxWidgets/TimedTaskChain.h
     src/ui/wxWidgets/PasswordSubsetDlg.h
     src/ui/wxWidgets/CryptKeyEntryDlg.h
+    src/ui/wxWidgets/SetDatabaseIdDlg.h
     src/ui/wxWidgets/SetFiltersDlg.h
     src/ui/wxWidgets/ManageFiltersDlg.h
     src/ui/wxWidgets/ViewAttachmentDlg.h
@@ -126,6 +127,7 @@ list(APPEND PWSAFE_SRC_LIST
     src/ui/wxWidgets/TimedTaskChain.cpp
     src/ui/wxWidgets/PasswordSubsetDlg.cpp
     src/ui/wxWidgets/CryptKeyEntryDlg.cpp
+    src/ui/wxWidgets/SetDatabaseIdDlg.cpp
     src/ui/wxWidgets/SetFiltersDlg.cpp
     src/ui/wxWidgets/ManageFiltersDlg.cpp
     src/ui/wxWidgets/ViewAttachmentDlg.cpp
@@ -146,6 +148,7 @@ list(APPEND PWSAFE_SRC_LIST
     src/ui/wxWidgets/PWFiltersMediaDlg.cpp
     src/ui/wxWidgets/PWFiltersPasswordDlg.cpp
     src/ui/wxWidgets/ManageFiltersTable.cpp
+    src/ui/wxWidgets/QueryCancelDlg.cpp
     )
 
 if(HAVE_YKPERS_H)
@@ -153,15 +156,15 @@ if(HAVE_YKPERS_H)
   list(APPEND PWSAFE_HDR_LIST src/ui/wxWidgets/YubiCfgDlg.h src/ui/wxWidgets/YubiMixin.h)
 endif(HAVE_YKPERS_H)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" OR ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 if (NOT NO_QR)
   list(APPEND PWSAFE_SRC_LIST src/ui/wxWidgets/QRCodeDlg.cpp src/ui/wxWidgets/QREncode.cpp)
   list(APPEND PWSAFE_HDR_LIST src/ui/wxWidgets/QREncode.h src/ui/wxWidgets/QRCodeDlg.h)
 endif(NOT NO_QR)
-endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux" OR ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  list(APPEND PWSAFE_SRC_LIST src/ui/wxWidgets/QRCodeDlg.cpp src/ui/wxWidgets/pwsqrencode.mm)
+  list(APPEND PWSAFE_SRC_LIST src/ui/wxWidgets/QRCodeDlg.cpp src/ui/wxWidgets/QREncode.mm)
   list(APPEND PWSAFE_HDR_LIST src/ui/wxWidgets/QREncode.h src/ui/wxWidgets/QRCodeDlg.h)
 endif (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 

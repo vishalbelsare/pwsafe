@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -32,18 +32,17 @@ class ExportTextWarningDlgBase : public wxDialog
 
   DECLARE_CLASS( ExportTextWarningDlgBase )
   DECLARE_EVENT_TABLE()
-
 public:
-  ExportTextWarningDlgBase(wxWindow* parent);
+  SelectionCriteria* selCriteria;
+  StringX           passKey;
+  wxString          delimiter;
+protected:
+  explicit ExportTextWarningDlgBase(wxWindow *parent);
   ~ExportTextWarningDlgBase();
 
   void OnAdvancedSelection( wxCommandEvent& evt );
 
   virtual void DoAdvancedSelection() = 0;
-
-  SelectionCriteria* selCriteria;
-  StringX           passKey;
-  wxString          delimiter;
 private:
 #ifndef NO_YUBI
   void OnYubibtnClick( wxCommandEvent& event );
@@ -51,21 +50,23 @@ private:
 #endif
   const wxString defDelim;
   SafeCombinationCtrl* m_combinationEntry;
-  wxTimer* m_pollingTimer; // for Yubi, but can't go into mixin :-(
 };
 
 template <class DlgType>
 class ExportTextWarningDlg : public ExportTextWarningDlgBase
 {
 public:
-  ExportTextWarningDlg(wxWindow* parent) : ExportTextWarningDlgBase(parent)
+  static ExportTextWarningDlg* Create(wxWindow *parent) {
+    return new ExportTextWarningDlg(parent);
+  }
+protected:
+  explicit ExportTextWarningDlg(wxWindow *parent) : ExportTextWarningDlgBase(parent)
   {
     SetTitle(DlgType::GetTitle());
   }
 
   virtual void DoAdvancedSelection() {
-    AdvancedSelectionDlg<DlgType> dlg(this, selCriteria);
-    dlg.ShowModal();
+    ShowModalAndGetResult<AdvancedSelectionDlg<DlgType>>(this, selCriteria);
   }
 };
 

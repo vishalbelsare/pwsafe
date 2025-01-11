@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -142,12 +142,16 @@ class AdvancedSelectionDlg : public wxDialog
   PanelType* m_panel;
 
 public:
-  AdvancedSelectionDlg(wxWindow* parent, SelectionCriteria* existingCriteria): m_panel(nullptr)
+  static AdvancedSelectionDlg<DlgType>* Create(wxWindow *parent, SelectionCriteria* existingCriteria) {
+    return new AdvancedSelectionDlg(parent, existingCriteria);
+  }
+protected:
+  AdvancedSelectionDlg(wxWindow *parent, SelectionCriteria* existingCriteria): m_panel(nullptr)
   {
+    wxASSERT(!parent || parent->IsTopLevel());
     wxDialog::Create(parent, wxID_ANY, wxEmptyString, wxDefaultPosition, 
                             wxDefaultSize, wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER);
   
-
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     sizer->AddSpacer(TopMargin);
 

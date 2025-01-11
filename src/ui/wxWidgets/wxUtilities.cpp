@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -28,8 +28,21 @@
 #include <wx/versioninfo.h>
 
 #include "core/PWScore.h"
+#include "core/PWCharPool.h" // for CheckMasterPassword()
+#include "PWSafeApp.h"
+#include "SafeCombinationCtrl.h"
 
 #include "wxUtilities.h"
+
+#include "graphics/checkmark_placeholder.xpm"
+#include "graphics/checkmark_green.xpm" // https://www.pngrepo.com/svg/311890/check-mark
+#include "graphics/checkmark_gray.xpm"  // https://www.pngrepo.com/svg/311890/check-mark
+#include "graphics/cpane.xpm"
+#include "graphics/eye.xpm"         // https://www.pngrepo.com/svg/10151/eye
+#include "graphics/eye_close.xpm"   // https://www.pngrepo.com/svg/391829/eye-close
+#ifndef NO_YUBI
+#include "graphics/Yubikey-button.xpm"
+#endif
 
 /*
  * Reads a file into a PWScore object, and displays an appropriate msgbox
@@ -73,70 +86,6 @@ int ReadCore(PWScore& othercore, const wxString& file, const StringX& combinatio
   }
 
   return rc;
-}
-
-int CountTopLevelWindowRecursively(wxTopLevelWindow* win)
-{
-  if (!win)
-    return 0;
-  int count = 1;
-  wxWindowList& children = win->GetChildren();
-  for(wxWindowList::iterator itr = children.begin(); itr != children.end(); ++itr) {
-    if ((*itr)->IsTopLevel()) {
-      count += CountTopLevelWindowRecursively(wxDynamicCast(*itr, wxTopLevelWindow));
-    }
-  }
-  return count;
-}
-
-void CloseChildWindowRecursively(wxTopLevelWindow* win, wxTopLevelWindow* top)
-{
-  if (!win)
-    return;
-  wxWindowList& children = win->GetChildren();
-  for(wxWindowList::iterator itr = children.begin(); itr != children.end(); ++itr) {
-    if ((*itr)->IsTopLevel()) {
-      CloseChildWindowRecursively(wxDynamicCast(*itr, wxTopLevelWindow), top);
-    }
-  }
-  if(win != top) {
-    wxCommandEvent evt(wxEVT_CLOSE_WINDOW);
-    wxPostEvent(win, evt);
-  }
-}
-
-void HideWindowRecursively(wxTopLevelWindow* win)
-{
-  if (!win)
-    return;
-  wxWindowList& children = win->GetChildren();
-  for(wxWindowList::iterator itr = children.begin(); itr != children.end(); ++itr) {
-    if ((*itr)->IsTopLevel() && (*itr)->IsShown()) {
-      HideWindowRecursively(wxDynamicCast(*itr, wxTopLevelWindow));
-    }
-  }
-
-  //Don't call Hide() here, which just calls Show(false), which is overridden in
-  //derived classes, and wxDialog actually cancels the modal loop and closes the window
-  win->wxWindow::Show(false);
-}
-
-void ShowWindowRecursively(wxTopLevelWindow* win)
-{
-  if (!win)
-    return;
-  // Handle at first to ensure Show() in the reverse order of Hide()'ing
-  wxASSERT(win->IsTopLevel());
-  win->wxWindow::Show(true);
-  win->Raise();
-  win->Update();
-  
-  wxWindowList& children = win->GetChildren();
-  for(wxWindowList::iterator itr = children.begin(); itr != children.end(); ++itr) {
-    if ((*itr)->IsTopLevel()) {
-      ShowWindowRecursively(wxDynamicCast(*itr, wxTopLevelWindow));
-    }
-  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,38 +156,216 @@ bool MultiCheckboxValidator::Validate(wxWindow* parent)
   }
 }
 
-void ShowHideText(wxTextCtrl *&txtCtrl, const wxString &text,
-                  wxSizer *sizer, bool show)
+void UpdatePasswordTextCtrl(wxSizer *sizer, wxTextCtrl* &textCtrl, const wxString text, wxTextCtrl* before, const int style)
 {
-  wxWindow *parent = txtCtrl->GetParent();
-  wxWindowID id = txtCtrl->GetId();
-  wxValidator *validator = txtCtrl->GetValidator();
+  ASSERT(textCtrl);
+#if defined(__WXGTK__)
+  // Since this function is called with only a single style flag such as "0", "wxTE_PASSWORD" or "wxTE_READONLY",
+  // we do not care about flags already set for the control and therefore do not preserve them.
+  textCtrl->SetWindowStyle(style);
+  textCtrl->ChangeValue(text);
+#else
+  wxWindow *parent = textCtrl->GetParent();
+  wxWindowID id = textCtrl->GetId();
+  wxValidator *validator = textCtrl->GetValidator();
 
   // Per Dave Silvia's suggestion:
   // Following kludge since wxTE_PASSWORD style is immutable
-  wxTextCtrl *tmp = txtCtrl;
-  txtCtrl = new wxTextCtrl(parent, id, text,
+  wxTextCtrl *tmp = textCtrl;
+  textCtrl = new wxTextCtrl(parent, id, text,
                            wxDefaultPosition, wxDefaultSize,
-                           show ? 0 : wxTE_PASSWORD);
-  if (validator != nullptr)
-    txtCtrl->SetValidator(*validator);
-  ApplyFontPreference(txtCtrl, PWSprefs::StringPrefs::PasswordFont);
-  sizer->Replace(tmp, txtCtrl);
-  delete tmp;
-  sizer->Layout();
+                           style);
   if (!text.IsEmpty()) {
-    txtCtrl->ChangeValue(text);
-    txtCtrl->SetModified(true);
+    textCtrl->ChangeValue(text);
+    textCtrl->SetModified(true);
   }
+  if (validator != nullptr) {
+    textCtrl->SetValidator(*validator);
+  }
+  if (before != nullptr) {
+    textCtrl->MoveAfterInTabOrder(before);
+  }
+  ApplyFontPreference(textCtrl, PWSprefs::StringPrefs::PasswordFont);
+  sizer->Replace(tmp, textCtrl);
+  tmp->Destroy();
+  sizer->Layout();
+#endif
+}
+
+bool CheckPasswordStrengthAndWarn(wxWindow *win, StringX &password)
+{
+  // Vox populi vox dei - folks want the ability to use a weak
+  // passphrase, best we can do is warn them...
+  // If someone want to build a version that insists on proper
+  // passphrases, then just define the preprocessor macro
+  // PWS_FORCE_STRONG_PASSPHRASE in the build properties/Makefile
+  StringX errmess;
+  if (!CPasswordCharPool::CheckMasterPassword(password, errmess)) {
+    wxString cs_msg = errmess.c_str();
+#ifndef PWS_FORCE_STRONG_PASSPHRASE
+    cs_msg += wxT("\n");
+    cs_msg += _("Use it anyway?");
+    wxMessageDialog mb(win, cs_msg, _("Weak Master Password"),
+                       wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION);
+    mb.SetYesNoLabels(_("Use anyway"), _("Cancel"));
+    int rc = mb.ShowModal();
+    return (rc == wxID_YES);
+#else
+    cs_msg += wxT("\n");
+    cs_msg += _("Try another");
+    wxMessageDialog mb(win, cs_msg, _("Error"), wxOK | wxICON_HAND);
+    mb.ShowModal();
+    return false;
+#endif // PWS_FORCE_STRONG_PASSPHRASE
+  }
+  return true;
+}
+
+SafeCombinationCtrl* wxUtilities::CreateLabeledSafeCombinationCtrl(wxWindow* parent, wxWindowID id, const wxString& label, StringX* password, bool hasFocus)
+{
+  auto *sizer = new wxBoxSizer(wxVERTICAL);
+  parent->GetSizer()->Add(sizer, 0, wxBOTTOM|wxLEFT|wxRIGHT|wxEXPAND, 12);
+
+  auto *labelCtrl = new wxStaticText(parent, wxID_STATIC, _(label), wxDefaultPosition, wxDefaultSize, 0);
+  sizer->Add(labelCtrl, 0, wxBOTTOM|wxALIGN_LEFT, 5);
+
+  auto *safeCombinationCtrl = new SafeCombinationCtrl(parent, id, password, wxDefaultPosition, wxDefaultSize);
+  sizer->Add(safeCombinationCtrl, 0, wxALL|wxEXPAND|wxALIGN_LEFT, 0);
+
+  if (hasFocus) {
+    safeCombinationCtrl->SetFocus();
+  }
+
+  return safeCombinationCtrl;
+}
+
+std::tuple<wxBitmapButton*, wxStaticText*> wxUtilities::CreateYubiKeyControls(wxWindow *parent, wxWindowID buttonId, wxWindowID statusTextId)
+{
+  auto* panel = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(-1,  35));
+  parent->GetSizer()->Add(panel, 0, wxBOTTOM|wxLEFT|wxRIGHT|wxEXPAND, 12);
+
+  auto *sizer = new wxBoxSizer(wxHORIZONTAL);
+  panel->SetSizer(sizer);
+
+  auto *button = new wxBitmapButton(panel, buttonId, GetBitmapResource(wxT("graphics/Yubikey-button.xpm")), wxDefaultPosition, wxSize(35,  35), wxBU_AUTODRAW);
+  button->SetToolTip(_("YubiKey"));
+  sizer->Add(button, 0, wxALL|wxALIGN_CENTER|wxALIGN_LEFT, 0);
+
+  auto *statusText = new wxStaticText(panel, statusTextId, _("Insert YubiKey"), wxDefaultPosition, wxDefaultSize, 0);
+  sizer->Add(statusText, 0, wxLEFT|wxRIGHT|wxALIGN_CENTER|wxALIGN_LEFT, 12);
+
+  return std::make_tuple(button, statusText);
+}
+
+wxBitmapButton* wxUtilities::GetYubiKeyButtonControl(std::tuple<wxBitmapButton*, wxStaticText*>& controls)
+{
+  return std::get<wxBitmapButton*>(controls);
+}
+
+wxStaticText* wxUtilities::GetYubiKeyStatusControl(std::tuple<wxBitmapButton*, wxStaticText*>& controls)
+{
+  return std::get<wxStaticText*>(controls);
+}
+
+wxBitmap wxUtilities::GetBitmapResource( const wxString& name )
+{
+  if (name == wxT("graphics/cpane.xpm"))
+  {
+    return wxBitmap(cpane_xpm);
+  }
+  else if (name == wxT("graphics/checkmark_placeholder.xpm"))
+  {
+    return wxBitmap(checkmark_placeholder_xpm);
+  }
+  else if (name == wxT("graphics/checkmark_green.xpm"))
+  {
+    return wxBitmap(checkmark_green_xpm);
+  }
+  else if (name == wxT("graphics/checkmark_gray.xpm"))
+  {
+    return wxBitmap(checkmark_gray_xpm);
+  }
+  else if (name == wxT("graphics/eye.xpm"))
+  {
+    return wxBitmap(eye_xpm);
+  }
+  else if (name == wxT("graphics/eye_close.xpm"))
+  {
+    return wxBitmap(eye_close_xpm);
+  }
+#ifndef NO_YUBI
+  else if (name == wxT("graphics/Yubikey-button.xpm"))
+  {
+    return wxBitmap(Yubikey_button_xpm);
+  }
+#endif
+  return wxNullBitmap;
 }
 
 int pless(int* first, int* second) { return *first - *second; }
+
+bool IsCurrentDesktopKde()
+{
+#ifdef __WINDOWS__
+  return false;
+#else
+  wxString currentDesktop = wxEmptyString;
+
+  if (!wxGetEnv(wxT("XDG_CURRENT_DESKTOP"), &currentDesktop)) {
+    return false; // Environment variable does not exist
+  }
+
+  return (!currentDesktop.IsEmpty() && (currentDesktop.MakeLower().Trim() == wxT("kde")));
+#endif
+}
+
+bool wxUtilities::IsDisplayManagerX11()
+{
+  static int isDisplayManagerX11 = 0;
+
+  // Get the env. variable only once
+  if (isDisplayManagerX11 == 0) {
+    wxString XDG_SESSION_TYPE = wxEmptyString;
+    if (wxGetEnv(wxT("XDG_SESSION_TYPE"), &XDG_SESSION_TYPE)) { // provides 'x11' or 'wayland'
+
+      if (!XDG_SESSION_TYPE.IsEmpty() && XDG_SESSION_TYPE == wxT("x11")) {
+        isDisplayManagerX11 = 1;
+      } else {
+        isDisplayManagerX11 = 2; // Don't call wxGetEnv() more than once per process if value is bad
+      }
+    } else {
+      isDisplayManagerX11 = 3; // Don't call wxGetEnv() more than once per process if value is not set/available
+    }
+  }
+  return (isDisplayManagerX11 == 1);
+}
+
+bool wxUtilities::IsVirtualKeyboardSupported()
+{
+#ifdef __WINDOWS__
+  return false;
+#elif defined __WXOSX__
+  return true;
+#else
+  return wxUtilities::IsDisplayManagerX11();
+#endif
+}
+
+void wxUtilities::DisableIfUnsupported(enum Feature feature, wxWindow* window)
+{
+  const bool isWayland = !wxUtilities::IsDisplayManagerX11();
+
+  if (feature == Autotype && isWayland) {
+    window->Disable();
+    window->SetToolTip(_("Not supported by Wayland"));
+  }
+}
 
 // Wrapper for wxTaskBarIcon::IsAvailable() that doesn't crash
 // on Fedora or Ubuntu
 bool IsTaskBarIconAvailable()
 {
-#if defined(__WXGTK__)
+#if defined(__WXGTK__) && !defined(__OpenBSD__)
   const wxVersionInfo verInfo = wxGetLibraryVersionInfo();
   int major = verInfo.GetMajor();
   int minor = verInfo.GetMinor();
@@ -252,6 +379,32 @@ bool IsTaskBarIconAvailable()
   return wxTaskBarIcon::IsAvailable();
 }
 
+wxIcon CreateIconWithOverlay(const wxIcon& icon, const wxColour& color, const wxString& text)
+{
+  auto bitmap = wxBitmap(icon);
+  wxImage image = bitmap.ConvertToImage();
+
+  if (!image.HasAlpha())
+    image.InitAlpha();
+
+  bitmap = wxBitmap(image);
+  wxMemoryDC memoryDC;
+  memoryDC.SelectObject(bitmap);
+  auto font = memoryDC.GetFont();
+  font.MakeLarger();
+  font.MakeLarger();
+  font.MakeLarger();
+  font.MakeBold();
+  memoryDC.SetFont(font);
+  memoryDC.SetTextForeground(color);
+  memoryDC.SetBackgroundMode(wxTRANSPARENT);
+  memoryDC.DrawLabel(text, wxRect(bitmap.GetSize()));
+  memoryDC.SelectObject(wxNullBitmap);
+
+  wxIcon overLayIcon = wxNullIcon;
+  overLayIcon.CopyFromBitmap(bitmap);
+  return overLayIcon;
+}
 
 /**
  * The following works around a bug in several versions of GTK3 which causes
@@ -636,4 +789,9 @@ void ImagePanel::DrawBitmapCentered(wxDC &dc, const wxSize &drawAreaSize, const 
   int yCenterPosition = (drawAreaSize.GetHeight() - imageSize.GetHeight()) / 2;
 
   dc.DrawBitmap(m_Bitmap, xCenterPosition, yCenterPosition, false);
+}
+
+bool IsCloseInProgress()
+{
+  return wxGetApp().IsCloseInProgress();
 }

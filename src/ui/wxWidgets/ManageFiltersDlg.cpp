@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -219,22 +219,7 @@ END_EVENT_TABLE()
  * ManageFiltersDlg constructors
  */
 
-ManageFiltersDlg::ManageFiltersDlg() :
-                                 m_pMapAllFilters(nullptr),
-                                 m_pCurrentFilters(nullptr),
-                                 m_bCanHaveAttachments(false),
-                                 m_psMediaTypes(nullptr),
-                                 m_bReadOnly(true),
-                                 m_core(nullptr),
-                                 m_pActiveFilterPool(nullptr),
-                                 m_pActiveFilterName(nullptr),
-                                 m_pbFilterActive(nullptr)
-{
-  Init();
-}
-
-ManageFiltersDlg::ManageFiltersDlg(wxWindow* parent,
-                                   PWScore *core,
+ManageFiltersDlg::ManageFiltersDlg(wxWindow *parent, PWScore *core,
                                    PWSFilters &MapFilters,
                                    st_filters *currentFilters,
                                    FilterPool *activefilterpool,
@@ -261,16 +246,7 @@ ManageFiltersDlg::ManageFiltersDlg(wxWindow* parent,
                                             m_pActiveFilterName(activefiltername),
                                             m_pbFilterActive(bFilterActive)
 {
-  Init();
-  Create(parent, id, caption, pos, size, style);
-}
-
-/*!
- * ManageFiltersDlg creator
- */
-
-bool ManageFiltersDlg::Create( wxWindow* parent, wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style )
-{
+  wxASSERT(!parent || parent->IsTopLevel());
 ////@begin ManageFiltersDlg creation
   SetExtraStyle(wxWS_EX_VALIDATE_RECURSIVELY|wxWS_EX_BLOCK_EVENTS);
   wxDialog::Create( parent, id, caption, pos, size, style );
@@ -282,39 +258,29 @@ bool ManageFiltersDlg::Create( wxWindow* parent, wxWindowID id, const wxString& 
   }
   Centre();
 ////@end ManageFiltersDlg creation
-  return true;
 }
 
 
-/*!
- * ManageFiltersDlg destructor
- */
-
-ManageFiltersDlg::~ManageFiltersDlg()
+ManageFiltersDlg* ManageFiltersDlg::Create(wxWindow *parent, PWScore *core,
+                                   PWSFilters &MapFilters,
+                                   st_filters *currentFilters,
+                                   FilterPool *activefilterpool,
+                                   stringT *activefiltername,
+                                   bool *bFilterActive,
+                                   const bool bCanHaveAttachments,
+                                   const std::set<StringX> *psMediaTypes,
+                                   bool readOnly,
+                                   wxWindowID id, const wxString& caption,
+                                   const wxPoint& pos,
+                                   const wxSize& size,
+                                   long style )
 {
-////@begin ManageFiltersDlg destruction
-////@end ManageFiltersDlg destruction
+  return new ManageFiltersDlg(parent, core, MapFilters, currentFilters,
+                              activefilterpool, activefiltername,
+                              bFilterActive, bCanHaveAttachments,
+                              psMediaTypes, readOnly,
+                              id, caption, pos, size, style);
 }
-
-
-/*!
- * Member initialisation
- */
-
-void ManageFiltersDlg::Init()
-{
-////@begin ManageFiltersDlg member initialisation
-  m_MapFiltersGrid = nullptr;
-  m_FontHeight = 15;
-  m_SelectedFilterPool = FPOOL_LAST;
-  m_SelectedFilterName = L"";
-  m_num_to_copy = 0;
-  m_num_to_export = 0;
-  m_bDBFiltersChanged = false;
-  windowSize.Set(0, 0);
-////@end ManageFiltersDlg member initialisation
-}
-
 
 /*!
  * Control creation for ManageFiltersDlg
@@ -771,7 +737,12 @@ void ManageFiltersDlg::OnCellLeftClick( wxGridEvent& event )
  * wxEVT_COMMAND_BUTTON_CLICKED event handler for wxID_NEW
  */
 
-void ManageFiltersDlg::OnNewClick( wxCommandEvent& event )
+void ManageFiltersDlg::OnNewClick(wxCommandEvent&)
+{
+  CallAfter(&ManageFiltersDlg::DoNewClick);
+}
+
+void ManageFiltersDlg::DoNewClick()
 {
   st_filters filters; // New filter is empty
   bool bActiveFilter = m_MapFilterData.IsFilterActive();
@@ -781,8 +752,7 @@ void ManageFiltersDlg::OnNewClick( wxCommandEvent& event )
   while(bDoEdit) {
     bDoEdit = false; // In formal case we run only one time in the loop; but when removal of double entry is requested we avoid goto
 
-    SetFiltersDlg dlg(GetParent(), &filters, m_pCurrentFilters, &bAppliedCalled, DFTYPE_MAIN, FPOOL_SESSION, m_bCanHaveAttachments, m_psMediaTypes);
-    int rc = dlg.ShowModal();
+    int rc = ShowModalAndGetResult<SetFiltersDlg>(this, &filters, m_pCurrentFilters, &bAppliedCalled, DFTYPE_MAIN, FPOOL_SESSION, m_bCanHaveAttachments, m_psMediaTypes);
     
     if(bActiveFilter && ! *m_pbFilterActive) {
       // On filter active before and now no filter active take back usage flag
@@ -794,7 +764,7 @@ void ManageFiltersDlg::OnNewClick( wxCommandEvent& event )
       bActiveFilter = false;
     }
   
-    if(rc == wxID_OK || (rc == wxID_CANCEL && bAppliedCalled)) {
+    if(rc == wxID_OK || (rc == wxID_CANCEL && bAppliedCalled && !IsCloseInProgress())) {
       if(rc != wxID_OK) {
         // Overtake last applied filter
         filters = *m_pCurrentFilters;
@@ -853,7 +823,12 @@ void ManageFiltersDlg::OnNewClick( wxCommandEvent& event )
  * wxEVT_COMMAND_BUTTON_CLICKED event handler for ID_EDIT
  */
 
-void ManageFiltersDlg::OnEditClick( wxCommandEvent& event )
+void ManageFiltersDlg::OnEditClick(wxCommandEvent&)
+{
+  CallAfter(&ManageFiltersDlg::DoEditClick);
+}
+
+void ManageFiltersDlg::DoEditClick()
 {
   st_Filterkey fk;
   st_filters filters; // New filter is empty
@@ -877,8 +852,7 @@ void ManageFiltersDlg::OnEditClick( wxCommandEvent& event )
   while(bDoEdit) { // Loop to avoid goto
     bDoEdit = false;  // In formal case we run only one time in the loop; but when removal of double entry is requested we avoid goto
 
-    SetFiltersDlg dlg(GetParent(), &filters, m_pCurrentFilters, &bAppliedCalled, DFTYPE_MAIN, fk.fpool, m_bCanHaveAttachments, m_psMediaTypes);
-    int rc = dlg.ShowModal();
+    int rc = ShowModalAndGetResult<SetFiltersDlg>(this, &filters, m_pCurrentFilters, &bAppliedCalled, DFTYPE_MAIN, fk.fpool, m_bCanHaveAttachments, m_psMediaTypes);
     
     if(bActiveFilter && ! *m_pbFilterActive) {
       // On filter active before and now no filter active take back usage flag
@@ -890,7 +864,7 @@ void ManageFiltersDlg::OnEditClick( wxCommandEvent& event )
       bActiveFilter = false;
     }
   
-    if (rc == wxID_OK || (rc == wxID_CANCEL && bAppliedCalled)) {
+    if (rc == wxID_OK || (rc == wxID_CANCEL && bAppliedCalled && !IsCloseInProgress())) {
       if(rc != wxID_OK) {
         // Overtake last applied filter
         filters = *m_pCurrentFilters;
@@ -1067,7 +1041,7 @@ void ManageFiltersDlg::OnImportClick( wxCommandEvent& event )
   // Build default file name
   wxFileName TxtFileName(towxstring(PWSUtil::GetNewFileName(stringx2std(m_core->GetCurFile()) + wxT(".") + wxT("filters"), wxT("xml"))));
   // Ask for file name
-  wxFileDialog fd(this, _("Please Choose a XML File to Import"), TxtFileName.GetPath(),
+  wxFileDialog fd(this, _("Choose an XML File to Import"), TxtFileName.GetPath(),
                   TxtFileName.GetFullName(), _("XML files (*.xml)|*.xml"),
                   wxFD_OPEN | wxFD_FILE_MUST_EXIST | wxFD_CHANGE_DIR);
 
@@ -1141,7 +1115,7 @@ void ManageFiltersDlg::OnExportClick( wxCommandEvent& event )
     // Build default file name
     wxFileName TxtFileName(towxstring(PWSUtil::GetNewFileName(stringx2std(m_core->GetCurFile()), tostdstring(_("filter")) + wxT(".xml"))));
     // Ask for file name
-    wxFileDialog fd(this, _("Please name the XML file"), TxtFileName.GetPath(),
+    wxFileDialog fd(this, _("Name the XML file"), TxtFileName.GetPath(),
                     TxtFileName.GetFullName(), _("XML files (*.xml)|*.xml|All files (*.*; *)|*.*;*"),
                     wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 

@@ -1,6 +1,6 @@
 /*
  * Created by Saurav Ghosh
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -32,6 +32,7 @@ const CItem::FieldType diff_fields[] = {
     CItem::TITLE,
     CItem::USER,
     CItem::PASSWORD,
+    CItem::TWOFACTORKEY,
     CItem::EMAIL,
     CItem::NOTES,
     CItem::URL,
@@ -49,7 +50,11 @@ const CItem::FieldType diff_fields[] = {
     CItem::DCA,
     CItem::SHIFTDCA,
     CItem::KBSHORTCUT,
-    CItem::PROTECTED
+    CItem::PROTECTED,
+    CItem::TOTPCONFIG,
+    CItem::TOTPLENGTH,
+    CItem::TOTPTIMESTEP,
+    CItem::TOTPSTARTTIME
 };
 
 //////////////////////////////////////////////////////////
@@ -71,16 +76,16 @@ inline StringX safe_file_hdr(const wchar_t *tag, const PWScore &core)
 
 uint32_t dca2str(uint16 dca) {
   const std::map<int16_t, uint32_t> dca_id_str = {
-    {PWSprefs::DoubleClickAutoType,             IDSC_DCAAUTOTYPE},
-    {PWSprefs::DoubleClickBrowse,               IDSC_DCABROWSE},
-    {PWSprefs::DoubleClickBrowsePlus,           IDSC_DCABROWSEPLUS},
-    {PWSprefs::DoubleClickCopyNotes,            IDSC_DCACOPYNOTES},
-    {PWSprefs::DoubleClickCopyUsername,         IDSC_DCACOPYUSERNAME},
-    {PWSprefs::DoubleClickCopyPassword,         IDSC_DCACOPYPASSWORD},
-    {PWSprefs::DoubleClickCopyPasswordMinimize, IDSC_DCACOPYPASSWORDMIN},
-    {PWSprefs::DoubleClickRun,                  IDSC_DCARUN},
-    {PWSprefs::DoubleClickSendEmail,            IDSC_DCASENDEMAIL},
-    {PWSprefs::DoubleClickViewEdit,             IDSC_DCAVIEWEDIT}
+    {static_cast<int16_t>(PWSprefs::DoubleClickAutoType),             IDSC_DCAAUTOTYPE},
+    {static_cast<int16_t>(PWSprefs::DoubleClickBrowse),               IDSC_DCABROWSE},
+    {static_cast<int16_t>(PWSprefs::DoubleClickBrowsePlus),           IDSC_DCABROWSEPLUS},
+    {static_cast<int16_t>(PWSprefs::DoubleClickCopyNotes),            IDSC_DCACOPYNOTES},
+    {static_cast<int16_t>(PWSprefs::DoubleClickCopyUsername),         IDSC_DCACOPYUSERNAME},
+    {static_cast<int16_t>(PWSprefs::DoubleClickCopyPassword),         IDSC_DCACOPYPASSWORD},
+    {static_cast<int16_t>(PWSprefs::DoubleClickCopyPasswordMinimize), IDSC_DCACOPYPASSWORDMIN},
+    {static_cast<int16_t>(PWSprefs::DoubleClickRun),                  IDSC_DCARUN},
+    {static_cast<int16_t>(PWSprefs::DoubleClickSendEmail),            IDSC_DCASENDEMAIL},
+    {static_cast<int16_t>(PWSprefs::DoubleClickViewEdit),             IDSC_DCAVIEWEDIT}
   };
 
   const auto loc = dca_id_str.find(dca);
@@ -120,10 +125,8 @@ inline wostream& print_field_value(wostream &os, wchar_t tag,
       const StringX pwh_str = item.GetPWHistory();
       if (!pwh_str.empty()) {
         StringXStream value_stream;
-        size_t ignored;
-        PWHistList pwhl;
-        const bool save_pwhistory = CreatePWHistoryList(pwh_str, ignored, ignored, pwhl, PWSUtil::TMC_LOCALE);
-        value_stream << L"Save: " << (save_pwhistory? L"Yes" : L"No");
+        PWHistList pwhl(pwh_str, PWSUtil::TMC_LOCALE);
+        value_stream << L"Save: " << (pwhl.isSaving() ? L"Yes" : L"No");
         if ( !pwhl.empty() ) value_stream << endl;
         for( const auto &pwh: pwhl) value_stream << pwh.changedate << L": " << pwh.password << endl;
         fieldValue = value_stream.str();
@@ -388,7 +391,7 @@ void sbs_print(const PWScore &core,
     if ( print_fields ) {
       for( auto ft: diff_fields ) {
         // print the fields if they were actually found to be different
-        if (df.test(ft) && !have_empty_policies(item, otherItem)) {
+        if (df.test(ft) && (ft != CItem::POLICY || !have_empty_policies(item, otherItem))) {
           StringXStream wssl, wssr;
           wssl << left_line(ft) << flush;
           wssr << right_line(ft) << flush;
@@ -490,7 +493,7 @@ int Diff(PWScore &core, const UserArgs &ua)
 
   CItemData::FieldBits safeFields{ua.fields};
   for( auto ft: diff_fields ) {
-    if (ua.fields.test(ft) && CItemData::IsTextField(ft)) {
+    if (ua.fields.test(ft) && CItemData::IsTextField(static_cast<unsigned char>(ft))) {
       safeFields.set(ft);
     }
   }

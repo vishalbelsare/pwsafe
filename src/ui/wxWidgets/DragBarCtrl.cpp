@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -87,10 +87,10 @@ enum
 struct DragbarToolInfo {
   const wxWindowID id;
   const wxString name;
-  const char** bitmap;
-  const char** bitmap_disabled;
-  const char** classic_bitmap;
-  const char** classic_bitmap_disabled;
+  const char* const* const bitmap;
+  const char* const* const bitmap_disabled;
+  const char* const* const classic_bitmap;
+  const char* const* const classic_bitmap_disabled;
   const CItemData::FieldType field_type;
 
   DragbarToolInfo() :
@@ -101,8 +101,8 @@ struct DragbarToolInfo {
 
   DragbarToolInfo(
     wxWindowID id, const wxString &name,
-    const char** bitmap, const char** bitmap_disabled,
-    const char** classic_bitmap, const char** classic_bitmap_disabled,
+    const char* const* bitmap, const char* const* bitmap_disabled,
+    const char* const* classic_bitmap, const char* const* classic_bitmap_disabled,
     CItemData::FieldType field_type
   ) :
     id(id), name(name),

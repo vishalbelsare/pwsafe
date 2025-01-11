@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+ * Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
  * All rights reserved. Use of the code is allowed under the
  * Artistic License 2.0 terms, as specified in the LICENSE file
  * distributed with this code, or available from
@@ -49,12 +49,11 @@ class wxTimer;
 #define ID_ELLIPSIS 10003
 #define ID_COMBINATION 10004
 #define ID_READONLY 10005
-#define ID_SHOWCOMBINATION 10505
 #define ID_NEWDB 10006
 #define ID_YUBIBTN 10229
 #define ID_YUBISTATUS 10230
 #define SYMBOL_SAFECOMBINATIONENTRYDLG_STYLE wxCAPTION|wxRESIZE_BORDER|wxSYSTEM_MENU|wxCLOSE_BOX|wxDIALOG_MODAL|wxTAB_TRAVERSAL
-#define SYMBOL_SAFECOMBINATIONENTRYDLG_TITLE _("Safe Combination Entry")
+#define SYMBOL_SAFECOMBINATIONENTRYDLG_TITLE _("Master Password Entry")
 #define SYMBOL_SAFECOMBINATIONENTRYDLG_IDNAME ID_SAFECOMBINATIONENTRYDLG
 #define SYMBOL_SAFECOMBINATIONENTRYDLG_SIZE wxSize(400, 300)
 #define SYMBOL_SAFECOMBINATIONENTRYDLG_POSITION wxDefaultPosition
@@ -75,18 +74,18 @@ class SafeCombinationEntryDlg: public wxDialog
 
 public:
   /// Constructors
-  SafeCombinationEntryDlg(PWScore &core);
-  SafeCombinationEntryDlg(wxWindow* parent, PWScore &core,
-                          wxWindowID id = SYMBOL_SAFECOMBINATIONENTRYDLG_IDNAME, const wxString& caption = SYMBOL_SAFECOMBINATIONENTRYDLG_TITLE, const wxPoint& pos = SYMBOL_SAFECOMBINATIONENTRYDLG_POSITION, const wxSize& size = SYMBOL_SAFECOMBINATIONENTRYDLG_SIZE, long style = SYMBOL_SAFECOMBINATIONENTRYDLG_STYLE );
-
-  /// Creation
-  bool Create( wxWindow* parent, wxWindowID id = SYMBOL_SAFECOMBINATIONENTRYDLG_IDNAME, const wxString& caption = SYMBOL_SAFECOMBINATIONENTRYDLG_TITLE, const wxPoint& pos = SYMBOL_SAFECOMBINATIONENTRYDLG_POSITION, const wxSize& size = SYMBOL_SAFECOMBINATIONENTRYDLG_SIZE, long style = SYMBOL_SAFECOMBINATIONENTRYDLG_STYLE );
+  static SafeCombinationEntryDlg* Create(wxWindow *parent, PWScore &core,
+    wxWindowID id = SYMBOL_SAFECOMBINATIONENTRYDLG_IDNAME, 
+    const wxString& caption = SYMBOL_SAFECOMBINATIONENTRYDLG_TITLE, 
+    const wxPoint& pos = SYMBOL_SAFECOMBINATIONENTRYDLG_POSITION, 
+    const wxSize& size = SYMBOL_SAFECOMBINATIONENTRYDLG_SIZE, 
+    long style = SYMBOL_SAFECOMBINATIONENTRYDLG_STYLE);
 
   /// Destructor
   ~SafeCombinationEntryDlg();
-
-  /// Initialises member variables
-  void Init();
+protected:
+  SafeCombinationEntryDlg(wxWindow *parent, PWScore &core,
+    wxWindowID id, const wxString& caption, const wxPoint& pos, const wxSize& size, long style);
 
   /// Creates the controls and sizers
   void CreateControls();
@@ -98,9 +97,6 @@ public:
 
   /// wxEVT_COMMAND_CHECKBOX_CLICKED event handler for ID_READONLY
   void OnReadonlyClick( wxCommandEvent& event );
-
-  /// wxEVT_COMMAND_CHECKBOX_CLICKED event handler for ID_SHOWCOMBINATION
-  void OnShowCombination( wxCommandEvent& event );
 
   /// wxEVT_COMMAND_BUTTON_CLICKED event handler for ID_NEWDB
   void OnNewDbClick( wxCommandEvent& event );
@@ -127,7 +123,7 @@ public:
   void OnDBSelectionChange( wxCommandEvent& event );
 
 ////@begin SafeCombinationEntryDlg member function declarations
-
+public:
   StringX GetPassword() const { return m_password ; }
   void SetPassword(StringX value) { m_password = value ; }
 
@@ -140,33 +136,32 @@ public:
 
   /// Should we show tooltips?
   static bool ShowToolTips();
-
-  wxStaticText* m_version;
-  wxComboBox* m_filenameCB;
-  SafeCombinationCtrl* m_combinationEntry;
+protected:
+  void DoNewDbClick();
+  
+  wxStaticText* m_version = nullptr;
+  wxComboBox* m_filenameCB = nullptr;
+  SafeCombinationCtrl* m_combinationEntry = nullptr;
 
 #ifndef NO_YUBI
-  wxBitmapButton* m_YubiBtn;
-  wxStaticText* m_yubiStatusCtrl;
+  wxBitmapButton* m_YubiBtn = nullptr;
+  wxStaticText* m_yubiStatusCtrl = nullptr;
 #endif
 
 private:
   StringX m_password;
   wxString m_filename;
-  wxString m_ellipsizedFilename;
   bool m_readOnly;
   PWScore &m_core;
-  unsigned m_tries;
-  bool m_postInitDone;
+  bool m_postInitDone = false;
 
 #ifndef NO_YUBI
-  wxTimer* m_pollingTimer; // for Yubi, but can't go into mixin :-(
   // Not strictly yubi, but refactored to work with it:
 #endif
-  void ProcessPhrase();
+  bool ProcessPhrase();
   void UpdateReadOnlyCheckbox();
   void UpdateNew(bool isRO);
-  wxString EllipsizeFilePathname(const wxString& filename);
+  void EllipsizeFilePathname();
 };
 
 #endif // _SAFECOMBINATIONENTRYDLG_H_

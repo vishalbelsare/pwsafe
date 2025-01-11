@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2003-2021 Rony Shapiro <ronys@pwsafe.org>.
+* Copyright (c) 2003-2025 Rony Shapiro <ronys@pwsafe.org>.
 * All rights reserved. Use of the code is allowed under the
 * Artistic License 2.0 terms, as specified in the LICENSE file
 * distributed with this code, or available from
@@ -10,6 +10,7 @@
 #include "DboxMain.h"
 #include "PWDialog.h"
 #include "GeneralMsgBox.h"
+#include "winutils.h"
 
 #include <algorithm>
 #include <functional>
@@ -22,6 +23,15 @@ IMPLEMENT_DYNAMIC(CPWDialog, CDialog)
 DboxMain *CPWDialog::GetMainDlg() const
 {
   return app.GetMainDlg();
+}
+
+BOOL CPWDialog::OnInitDialog()
+{
+  BOOL bResult = CDialog::OnInitDialog();
+  CScreenCaptureStateControl::SetLastDisplayAffinityError(
+    WinUtil::SetWindowExcludeFromScreenCapture(m_hWnd, app.IsExcludeFromScreenCapture())
+  );
+  return bResult;
 }
 
 bool CPWDialog::InitToolTip(int Flags, int delayTimeFactor)
@@ -132,6 +142,15 @@ bool CPWDialogTracker::AnyOpenDialogs() const
   return retval;
 }
 
+bool CPWDialogTracker::AnyModalDialogs() const
+{
+  CSingleLock autoLock(&m_mutex, TRUE);
+  if (!autoLock.IsLocked()) return false;
+  return m_dialogs.end() != std::find_if(
+    m_dialogs.begin(), m_dialogs.end(),
+    [](CWnd* p) { return p->m_nFlags & (WF_MODALLOOP | WF_CONTINUEMODAL); });
+}
+
 void CPWDialogTracker::AddOpenDialog(CWnd *dlg)
 {
   m_mutex.Lock();
@@ -154,7 +173,8 @@ void CPWDialogTracker::Apply(void (*f)(CWnd *))
   m_mutex.Lock();
   dialogs = m_dialogs;
   m_mutex.Unlock();
-  std::for_each(dialogs.begin(), dialogs.end(), std::ptr_fun(f));
+  std::function<void(decltype(dialogs)::value_type)> func = f;
+  std::for_each(dialogs.begin(), dialogs.end(), func);
 }
 
 bool CPWDialogTracker::VerifyCanCloseDialogs()
